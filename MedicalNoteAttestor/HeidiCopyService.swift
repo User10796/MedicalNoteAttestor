@@ -1,6 +1,9 @@
 import Foundation
 import AppKit
 import Carbon
+import os.log
+
+private let logger = Logger(subsystem: "com.user.medicalnoteattestor", category: "HeidiCopy")
 
 enum HeidiSection {
     case hpi
@@ -20,41 +23,71 @@ class HeidiCopyService {
 
     /// Extract a section from clipboard text and put it back on clipboard
     func extractAndCopySection(_ section: HeidiSection) {
-        // Step 1: Simulate Ctrl+A, Ctrl+C to grab text from focused window
+        logger.warning("Hotkey pressed for \(section == .hpi ? "HPI" : "A&P")")
+
+        // Simulate Cmd+A, Cmd+C using CGEvent
         simulateSelectAllAndCopy()
 
-        // Small delay for clipboard to update
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+        // Delay for clipboard to update, then process
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             self?.processClipboard(for: section)
         }
     }
 
     private func simulateSelectAllAndCopy() {
-        // Create Cmd+A event
-        let cmdADown = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(0x00), keyDown: true) // 'A' key
-        cmdADown?.flags = .maskCommand
-        cmdADown?.post(tap: .cghidEventTap)
+        // Check accessibility
+        let trusted = AXIsProcessTrusted()
+        logger.warning("Accessibility trusted: \(trusted)")
 
-        let cmdAUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(0x00), keyDown: false)
-        cmdAUp?.flags = .maskCommand
-        cmdAUp?.post(tap: .cghidEventTap)
+        if !trusted {
+            logger.warning("NOT TRUSTED - requesting access")
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            AXIsProcessTrustedWithOptions(options)
+            return
+        }
 
-        // Small delay between commands
-        usleep(50000) // 50ms
+        // Create source for better event handling
+        guard let source = CGEventSource(stateID: .combinedSessionState) else {
+            logger.warning("Failed to create event source")
+            return
+        }
 
-        // Create Cmd+C event
-        let cmdCDown = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(0x08), keyDown: true) // 'C' key
-        cmdCDown?.flags = .maskCommand
-        cmdCDown?.post(tap: .cghidEventTap)
+        // Cmd+A
+        guard let aKeyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x00, keyDown: true),
+              let aKeyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x00, keyDown: false) else {
+            logger.warning("Failed to create Cmd+A events")
+            return
+        }
+        aKeyDown.flags = .maskCommand
+        aKeyUp.flags = .maskCommand
+        aKeyDown.post(tap: .cgAnnotatedSessionEventTap)
+        aKeyUp.post(tap: .cgAnnotatedSessionEventTap)
 
-        let cmdCUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(0x08), keyDown: false)
-        cmdCUp?.flags = .maskCommand
-        cmdCUp?.post(tap: .cghidEventTap)
+        usleep(150000) // 150ms
+
+        // Cmd+C
+        guard let cKeyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true),
+              let cKeyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false) else {
+            logger.warning("Failed to create Cmd+C events")
+            return
+        }
+        cKeyDown.flags = .maskCommand
+        cKeyUp.flags = .maskCommand
+        cKeyDown.post(tap: .cgAnnotatedSessionEventTap)
+        cKeyUp.post(tap: .cgAnnotatedSessionEventTap)
+
+        logger.warning("Posted Cmd+A, Cmd+C events")
     }
 
     private func processClipboard(for section: HeidiSection) {
         let pasteboard = NSPasteboard.general
-        guard let text = pasteboard.string(forType: .string) else { return }
+        guard let text = pasteboard.string(forType: .string) else {
+            logger.error("No text on clipboard")
+            return
+        }
+
+        logger.warning("Clipboard has \(text.count) characters")
+
 
         let extracted: String?
 
@@ -66,19 +99,22 @@ class HeidiCopyService {
         }
 
         if let extracted = extracted, !extracted.isEmpty {
+            logger.info("Extracted \(extracted.count) characters")
             // Put extracted text back on clipboard
             pasteboard.clearContents()
             pasteboard.setString(extracted, forType: .string)
+        } else {
+            logger.warning("No content extracted - headers not found in text")
         }
     }
 
     private func extractHPI(from text: String) -> String? {
-        // Find HPI start position
+        // Find HPI start position (case-insensitive)
         var hpiStart: String.Index?
         var usedHeader: String?
 
         for header in hpiHeaders {
-            if let range = text.range(of: header) {
+            if let range = text.range(of: header, options: .caseInsensitive) {
                 hpiStart = range.upperBound
                 usedHeader = header
                 break
@@ -87,8 +123,8 @@ class HeidiCopyService {
 
         guard let start = hpiStart else { return nil }
 
-        // Find A&P header (marks end of HPI)
-        guard let apRange = text.range(of: apHeader) else { return nil }
+        // Find A&P header (marks end of HPI) - case-insensitive
+        guard let apRange = text.range(of: apHeader, options: .caseInsensitive) else { return nil }
         let end = apRange.lowerBound
 
         // Make sure HPI comes before A&P
@@ -104,8 +140,8 @@ class HeidiCopyService {
     }
 
     private func extractAssessmentPlan(from text: String) -> String? {
-        // Find A&P start position
-        guard let apRange = text.range(of: apHeader) else { return nil }
+        // Find A&P start position (case-insensitive)
+        guard let apRange = text.range(of: apHeader, options: .caseInsensitive) else { return nil }
         let start = apRange.upperBound
 
         // Extract from A&P header to end

@@ -1,5 +1,8 @@
 import SwiftUI
 import Carbon
+import os.log
+
+private let logger = Logger(subsystem: "com.user.medicalnoteattestor", category: "App")
 
 @main
 struct MedicalNoteAttestorApp: App {
@@ -71,8 +74,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func checkAccessibilityPermissions() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         let trusted = AXIsProcessTrustedWithOptions(options)
-        if !trusted {
-            print("Accessibility permissions not granted. Hotkeys will not work.")
+        if trusted {
+            logger.info("Accessibility permissions granted")
+        } else {
+            logger.warning("Accessibility permissions not granted. Hotkeys may not work.")
         }
     }
 
@@ -124,8 +129,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             &eventHandler
         )
 
-        if status != noErr {
-            print("Failed to install event handler: \(status)")
+        if status == noErr {
+            logger.info("Event handler installed successfully")
+        } else {
+            logger.error("Failed to install event handler: \(status)")
         }
     }
 
@@ -151,11 +158,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if hpiStatus == noErr {
             HotkeyActions.shared.actions[1] = { [weak self] in
+                logger.info("HPI hotkey pressed!")
                 self?.heidiCopyService.extractAndCopySection(.hpi)
             }
-            print("HPI hotkey registered successfully")
+            logger.info("HPI hotkey registered successfully")
         } else {
-            print("Failed to register HPI hotkey: \(hpiStatus)")
+            logger.error("Failed to register HPI hotkey: \(hpiStatus)")
         }
 
         // Register A&P hotkey (id: 2)
@@ -174,11 +182,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if apStatus == noErr {
             HotkeyActions.shared.actions[2] = { [weak self] in
+                logger.info("A&P hotkey pressed!")
                 self?.heidiCopyService.extractAndCopySection(.assessmentPlan)
             }
-            print("A&P hotkey registered successfully")
+            logger.info("A&P hotkey registered successfully")
         } else {
-            print("Failed to register A&P hotkey: \(apStatus)")
+            logger.error("Failed to register A&P hotkey: \(apStatus)")
         }
     }
 
