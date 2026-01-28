@@ -28,8 +28,9 @@ struct MedicalNoteAttestorApp: App {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private var hpiEventHandler: EventHandlerRef?
-    private var apEventHandler: EventHandlerRef?
+    private var eventHandler: EventHandlerRef?
+    private var hpiHotKeyRef: EventHotKeyRef?
+    private var apHotKeyRef: EventHotKeyRef?
     private let heidiCopyService = HeidiCopyService()
     private var settingsWindow: NSWindow?
 
@@ -49,6 +50,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // Check and request accessibility permissions
+        checkAccessibilityPermissions()
+
+        // Install the event handler once
+        installEventHandler()
+
         // Register global hotkeys
         registerGlobalHotkeys()
 
@@ -59,6 +66,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: UserDefaults.didChangeNotification,
             object: nil
         )
+    }
+
+    private func checkAccessibilityPermissions() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        let trusted = AXIsProcessTrustedWithOptions(options)
+        if !trusted {
+            print("Accessibility permissions not granted. Hotkeys will not work.")
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -81,84 +96,100 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Global Hotkey Registration
 
+    private func installEventHandler() {
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+
+        let status = InstallEventHandler(
+            GetEventDispatcherTarget(),
+            { (_, event, _) -> OSStatus in
+                var hotKeyID = EventHotKeyID()
+                GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
+                HotkeyActions.shared.actions[hotKeyID.id]?()
+                return noErr
+            },
+            1,
+            &eventType,
+            nil,
+            &eventHandler
+        )
+
+        if status != noErr {
+            print("Failed to install event handler: \(status)")
+        }
+    }
+
     private func registerGlobalHotkeys() {
         guard SettingsManager.shared.heidiCopyEnabled else { return }
 
         let hpiKeyCode = SettingsManager.shared.hpiHotkey.keyCode
         let apKeyCode = SettingsManager.shared.apHotkey.keyCode
 
-        // Register HPI hotkey
-        registerHotkey(
-            keyCode: hpiKeyCode,
-            id: 1,
-            handler: &hpiEventHandler
-        ) { [weak self] in
-            self?.heidiCopyService.extractAndCopySection(.hpi)
-        }
+        // Register HPI hotkey (id: 1)
+        var hpiHotKeyID = EventHotKeyID()
+        hpiHotKeyID.signature = OSType(0x4D4E4131) // 'MNA1' in hex
+        hpiHotKeyID.id = 1
 
-        // Register A&P hotkey
-        registerHotkey(
-            keyCode: apKeyCode,
-            id: 2,
-            handler: &apEventHandler
-        ) { [weak self] in
-            self?.heidiCopyService.extractAndCopySection(.assessmentPlan)
-        }
-    }
-
-    private func registerHotkey(keyCode: UInt32, id: UInt32, handler: inout EventHandlerRef?, action: @escaping () -> Void) {
-        var hotKeyID = EventHotKeyID()
-        hotKeyID.signature = OSType(id)
-        hotKeyID.id = id
-
-        var hotKeyRef: EventHotKeyRef?
-        let status = RegisterEventHotKey(
-            keyCode,
+        let hpiStatus = RegisterEventHotKey(
+            hpiKeyCode,
             0, // No modifiers
-            hotKeyID,
-            GetApplicationEventTarget(),
+            hpiHotKeyID,
+            GetEventDispatcherTarget(),
             0,
-            &hotKeyRef
+            &hpiHotKeyRef
         )
 
-        if status == noErr {
-            // Store the action in a static dictionary keyed by id
-            HotkeyActions.shared.actions[id] = action
+        if hpiStatus == noErr {
+            HotkeyActions.shared.actions[1] = { [weak self] in
+                self?.heidiCopyService.extractAndCopySection(.hpi)
+            }
+            print("HPI hotkey registered successfully")
+        } else {
+            print("Failed to register HPI hotkey: \(hpiStatus)")
+        }
 
-            // Install event handler
-            var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-            InstallEventHandler(
-                GetApplicationEventTarget(),
-                { (_, event, _) -> OSStatus in
-                    var hotKeyID = EventHotKeyID()
-                    GetEventParameter(
-                        event,
-                        EventParamName(kEventParamDirectObject),
-                        EventParamType(typeEventHotKeyID),
-                        nil,
-                        MemoryLayout<EventHotKeyID>.size,
-                        nil,
-                        &hotKeyID
-                    )
-                    HotkeyActions.shared.actions[hotKeyID.id]?()
-                    return noErr
-                },
-                1,
-                &eventType,
-                nil,
-                &handler
-            )
+        // Register A&P hotkey (id: 2)
+        var apHotKeyID = EventHotKeyID()
+        apHotKeyID.signature = OSType(0x4D4E4132) // 'MNA2' in hex
+        apHotKeyID.id = 2
+
+        let apStatus = RegisterEventHotKey(
+            apKeyCode,
+            0, // No modifiers
+            apHotKeyID,
+            GetEventDispatcherTarget(),
+            0,
+            &apHotKeyRef
+        )
+
+        if apStatus == noErr {
+            HotkeyActions.shared.actions[2] = { [weak self] in
+                self?.heidiCopyService.extractAndCopySection(.assessmentPlan)
+            }
+            print("A&P hotkey registered successfully")
+        } else {
+            print("Failed to register A&P hotkey: \(apStatus)")
         }
     }
 
     private func unregisterGlobalHotkeys() {
-        if let handler = hpiEventHandler {
-            RemoveEventHandler(handler)
-            hpiEventHandler = nil
+        if let ref = hpiHotKeyRef {
+            UnregisterEventHotKey(ref)
+            hpiHotKeyRef = nil
         }
-        if let handler = apEventHandler {
-            RemoveEventHandler(handler)
-            apEventHandler = nil
+        if let ref = apHotKeyRef {
+            UnregisterEventHotKey(ref)
+            apHotKeyRef = nil
         }
         HotkeyActions.shared.actions.removeAll()
     }
