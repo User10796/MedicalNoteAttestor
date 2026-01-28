@@ -1,0 +1,25 @@
+# Build outputs
+build/
+build-release/
+build-debug/
+*.dmg
+
+# Xcode
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+DerivedData/
+
+# Windows/Electron
+MedicalNoteAttestor-Windows/node_modules/
+MedicalNoteAttestor-Windows/dist/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# IDE
+.idea/
+.vscode/
