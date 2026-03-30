@@ -14,142 +14,62 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #f5f5f5;
-            padding: 12px;
             height: 100vh;
             display: flex;
             flex-direction: column;
+            padding: 12px;
         }
 
         .header {
             display: flex;
             align-items: center;
-            justify-content: space-between;
             margin-bottom: 8px;
         }
 
         .header h1 {
-            font-size: 16px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .status {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 8px;
-        }
-
-        .status.success {
-            color: #22863a;
-        }
-
-        .status.error {
-            color: #cb2431;
-        }
-
-        .btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            padding: 10px 16px;
-            border: none;
-            border-radius: 6px;
             font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn-primary {
-            background: #0366d6;
-            color: white;
-            width: 100%;
-            margin-bottom: 8px;
-        }
-
-        .btn-primary:hover {
-            background: #0256b9;
-        }
-
-        .btn-primary:disabled {
-            background: #959da5;
-            cursor: not-allowed;
-        }
-
-        .btn-secondary {
-            background: #fafbfc;
-            border: 1px solid #e1e4e8;
             color: #24292e;
-            padding: 6px 12px;
-            font-size: 12px;
         }
 
-        .btn-secondary:hover {
-            background: #f3f4f6;
-        }
-
-        .output-area {
-            flex: 1;
-            background: white;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            padding: 10px;
-            overflow-y: auto;
-            font-family: 'Consolas', 'Monaco', monospace;
-            font-size: 11px;
-            line-height: 1.5;
-            white-space: pre-wrap;
-            color: #24292e;
-            margin-bottom: 8px;
-        }
-
-        .bottom-controls {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            color: #586069;
-        }
-
-        .button-group {
-            display: flex;
-            gap: 8px;
-        }
-
-        .spinner {
+        .header .spinner {
+            margin-left: auto;
+            display: none;
             width: 16px;
             height: 16px;
-            border: 2px solid #f3f3f3;
+            border: 2px solid #e1e4e8;
             border-top: 2px solid #0366d6;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            animation: spin 0.8s linear infinite;
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            to { transform: rotate(360deg); }
         }
+
+        .status {
+            font-size: 11px;
+            color: #586069;
+            margin-bottom: 8px;
+            min-height: 16px;
+        }
+
+        .status.success { color: #22863a; }
+        .status.error { color: #cb2431; }
 
         .tabs {
             display: flex;
             gap: 4px;
             margin-bottom: 8px;
             border-bottom: 1px solid #e1e4e8;
-            padding-bottom: 8px;
+            padding-bottom: 6px;
         }
 
         .tab {
-            padding: 6px 12px;
+            padding: 4px 10px;
             border: none;
             background: none;
             cursor: pointer;
-            font-size: 13px;
+            font-size: 12px;
             color: #586069;
             border-radius: 4px;
         }
@@ -165,22 +85,95 @@
 
         .tab-content {
             display: none;
-            flex-direction: column;
             flex: 1;
+            flex-direction: column;
+            min-height: 0;
         }
 
         .tab-content.active {
             display: flex;
         }
 
-        .heidi-info {
-            background: #f6f8fa;
+        .btn-select {
+            width: 100%;
+            padding: 10px;
+            background: #0366d6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .btn-select:hover {
+            background: #0256b9;
+        }
+
+        .btn-select:disabled {
+            background: #a0c4e8;
+            cursor: not-allowed;
+        }
+
+        .output-area {
+            flex: 1;
+            background: white;
             border: 1px solid #e1e4e8;
             border-radius: 6px;
-            padding: 12px;
+            padding: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 11px;
+            color: #24292e;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            min-height: 0;
+            user-select: text;
+        }
+
+        .bottom-controls {
+            display: flex;
+            align-items: center;
+            margin-top: 8px;
+            gap: 8px;
+        }
+
+        .bottom-controls label {
+            font-size: 11px;
+            color: #586069;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .btn-sm {
+            padding: 4px 10px;
+            border: 1px solid #e1e4e8;
+            background: #fafbfc;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            color: #24292e;
+        }
+
+        .btn-sm:hover {
+            background: #f3f4f6;
+        }
+
+        .spacer {
+            flex: 1;
+        }
+
+        /* Heidi tab */
+        .heidi-info {
             font-size: 12px;
             color: #586069;
             line-height: 1.6;
+            padding: 12px;
         }
 
         .heidi-info h3 {
@@ -189,48 +182,29 @@
             margin-bottom: 8px;
         }
 
-        .heidi-info ol {
-            margin-left: 20px;
-        }
-
-        .heidi-info li {
-            margin-bottom: 4px;
-        }
-
-        .hotkey-display {
-            display: inline-block;
-            background: #e1e4e8;
-            padding: 2px 6px;
+        .heidi-info kbd {
+            background: #f1f1f1;
+            border: 1px solid #ccc;
             border-radius: 3px;
-            font-family: monospace;
+            padding: 1px 6px;
+            font-family: 'Consolas', monospace;
             font-size: 11px;
         }
 
-        textarea {
-            width: 100%;
-            flex: 1;
-            padding: 10px;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            font-family: 'Consolas', 'Monaco', monospace;
-            font-size: 12px;
-            resize: none;
-            margin-bottom: 8px;
-        }
-
-        textarea:focus {
-            outline: none;
-            border-color: #0366d6;
+        #heidi-status {
+            font-size: 11px;
+            margin-top: 12px;
+            min-height: 16px;
         }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>Medical Note Attestor</h1>
-        <div id="spinner" class="spinner" style="display: none;"></div>
+        <div class="spinner" id="spinner"></div>
     </div>
 
-    <div id="status" class="status"></div>
+    <div class="status" id="status"></div>
 
     <div class="tabs">
         <button class="tab active" data-tab="attestor">Attestor</button>
@@ -239,36 +213,23 @@
 
     <!-- Attestor Tab -->
     <div id="attestor-tab" class="tab-content active">
-        <button id="select-btn" class="btn btn-primary">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M1 3.5A1.5 1.5 0 012.5 2h11A1.5 1.5 0 0115 3.5v9a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9zM2.5 3a.5.5 0 00-.5.5v9a.5.5 0 00.5.5h11a.5.5 0 00.5-.5v-9a.5.5 0 00-.5-.5h-11z"/>
+        <button class="btn-select" id="select-btn">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="2" width="12" height="12" rx="1" stroke-dasharray="3 2"/>
             </svg>
-            Paste & Process
+            Select
         </button>
 
-        <div id="output" class="output-area">Paste text from Heidi and click "Paste & Process" to format...</div>
+        <div class="output-area" id="output">Click 'Select' to capture screen text...</div>
 
         <div class="bottom-controls">
-            <label class="checkbox-group">
+            <label>
                 <input type="checkbox" id="auto-copy">
                 Auto-copy
             </label>
-            <div class="button-group">
-                <button id="copy-btn" class="btn btn-secondary">
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
-                        <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
-                    </svg>
-                    Copy
-                </button>
-                <button id="clear-btn" class="btn btn-secondary">
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M11 1.75v1.5a.75.75 0 001.5 0v-1.5A1.75 1.75 0 0010.75 0h-7.5A1.75 1.75 0 001.5 1.75v11.5c0 .966.784 1.75 1.75 1.75h2a.75.75 0 000-1.5h-2a.25.25 0 01-.25-.25V1.75a.25.25 0 01.25-.25h7.5a.25.25 0 01.25.25z"/>
-                        <path d="M7.495 9.793a.75.75 0 011.011.024l2.495 2.5 2.495-2.5a.75.75 0 111.059 1.062l-2.495 2.5 2.495 2.5a.75.75 0 01-1.059 1.062l-2.495-2.5-2.495 2.5a.75.75 0 01-1.059-1.062l2.495-2.5-2.495-2.5a.75.75 0 01.048-1.086z"/>
-                    </svg>
-                    Clear
-                </button>
-            </div>
+            <span class="spacer"></span>
+            <button class="btn-sm" id="copy-btn">Copy</button>
+            <button class="btn-sm" id="clear-btn">Clear</button>
         </div>
     </div>
 
@@ -276,23 +237,17 @@
     <div id="heidi-tab" class="tab-content">
         <div class="heidi-info">
             <h3>Heidi Copy Hotkeys</h3>
-            <p>Use global hotkeys to quickly copy HPI or A&P sections from Heidi to your clipboard.</p>
+            <p>In Heidi, press <strong>Ctrl+A</strong> then <strong>Ctrl+C</strong> to copy all text, then:</p>
             <br>
-            <p><strong>How to use:</strong></p>
-            <ol>
-                <li>In Heidi, select all text (Ctrl+A) and copy (Ctrl+C)</li>
-                <li>Press <span class="hotkey-display" id="hpi-key">Page Up</span> to copy just the HPI section</li>
-                <li>Paste (Ctrl+V) into Cerner Powerchart HPI field</li>
-                <li>Press <span class="hotkey-display" id="ap-key">Page Down</span> to copy just the A&P section</li>
-                <li>Paste (Ctrl+V) into Cerner A&P field</li>
-            </ol>
+            <p><kbd id="hpi-key">PageUp</kbd> &rarr; Copies <strong>HPI</strong> section to clipboard (asterisks removed)</p>
             <br>
-            <p><em>Note: The hotkeys read from your clipboard and extract just the section you need. Asterisks are automatically stripped.</em></p>
+            <p><kbd id="ap-key">PageDown</kbd> &rarr; Copies <strong>A&P</strong> section to clipboard (asterisks removed)</p>
             <br>
-            <p><strong>Change hotkeys:</strong> Go to Settings → Preferences</p>
+            <p>Then paste into Cerner PowerChart with <strong>Ctrl+V</strong>.</p>
+            <br>
+            <p style="font-size:11px; color:#888;">Configure hotkeys in Settings &rarr; Preferences</p>
+            <div id="heidi-status" class="status"></div>
         </div>
-
-        <div id="heidi-status" class="status" style="margin-top: 12px;"></div>
     </div>
 
     <script src="renderer.js"></script>

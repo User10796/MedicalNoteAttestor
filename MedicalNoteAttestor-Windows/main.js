@@ -1,28 +1,123 @@
-const { app, BrowserWindow, globalShortcut, clipboard, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, globalShortcut, clipboard, ipcMain, Menu, net, desktopCapturer, screen } = require('electron');
+const { execSync } = require('child_process');
 const path = require('path');
-const Store = require('electron-store');
+const fs = require('fs');
 
-// Initialize settings store
-const store = new Store({
-    defaults: {
-        hpiHotkey: 'PageUp',
-        apHotkey: 'PageDown',
-        heidiCopyEnabled: true,
-        customClaudeInstructions: '',
-        customAttestationTemplate: '',
-        windowBounds: { width: 400, height: 500 }
+// Portable config
+const DEFAULTS = {
+    hpiHotkey: 'PageUp',
+    apHotkey: 'PageDown',
+    heidiCopyEnabled: true,
+    claudeApiKey: '',
+    customClaudeInstructions: '',
+    customAttestationTemplate: '',
+    windowBounds: { width: 400, height: 500 }
+};
+
+function getConfigPath() {
+    const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+    if (portableDir) {
+        const portablePath = path.join(portableDir, 'MedicalNoteAttestor-config.json');
+        if (fs.existsSync(portablePath)) {
+            return portablePath;
+        }
     }
-});
+    const configDir = path.join(process.env.APPDATA || path.join(require('os').homedir(), 'AppData', 'Roaming'), 'MedicalNoteAttestor');
+    if (!fs.existsSync(configDir)) {
+        fs.mkdirSync(configDir, { recursive: true });
+    }
+    return path.join(configDir, 'config.json');
+}
+
+function getSavePath() {
+    const paths = [];
+    const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+    if (portableDir) {
+        paths.push(path.join(portableDir, 'MedicalNoteAttestor-config.json'));
+    }
+    const configDir = path.join(process.env.APPDATA || path.join(require('os').homedir(), 'AppData', 'Roaming'), 'MedicalNoteAttestor');
+    if (!fs.existsSync(configDir)) {
+        fs.mkdirSync(configDir, { recursive: true });
+    }
+    paths.push(path.join(configDir, 'config.json'));
+    return paths;
+}
+
+function loadConfig() {
+    try {
+        const configPath = getConfigPath();
+        if (fs.existsSync(configPath)) {
+            const raw = fs.readFileSync(configPath, 'utf-8');
+            return { ...DEFAULTS, ...JSON.parse(raw) };
+        }
+    } catch (e) {
+        console.error('Failed to load config:', e);
+    }
+    return { ...DEFAULTS };
+}
+
+function saveConfig(data) {
+    const json = JSON.stringify(data, null, 2);
+    for (const p of getSavePath()) {
+        try {
+            fs.writeFileSync(p, json, 'utf-8');
+        } catch (e) {
+            console.error('Failed to save config to', p, e);
+        }
+    }
+}
+
+const configData = loadConfig();
+const store = {
+    get: (key) => configData[key] !== undefined ? configData[key] : DEFAULTS[key],
+    set: (key, value) => { configData[key] = value; saveConfig(configData); }
+};
 
 let mainWindow;
 let settingsWindow;
+let overlayWindow;
 
 // Heidi section headers
 const HPI_HEADERS = [
     'Interval history, HPI:',
     'History of Present Illness (HPI):'
 ];
-const AP_HEADER = 'Assessment and Plan:';
+const AP_HEADERS = [
+    'Assessment and plan:',
+    'Assessment and Plan:',
+    'Assessment & Plan:',
+    'Assessment & plan:',
+    'Assessment/Plan:',
+    'A&P:',
+    'A/P:',
+    'ASSESSMENT AND PLAN:',
+    'ASSESSMENT & PLAN:',
+    'Assessment and Plan',
+    'Assessment and plan',
+    'Assessment & Plan'
+];
+
+function findAPStart(text) {
+    for (const header of AP_HEADERS) {
+        const idx = text.indexOf(header);
+        if (idx !== -1) {
+            return { index: idx, length: header.length };
+        }
+    }
+    // Case-insensitive fallback
+    const lower = text.toLowerCase();
+    const patterns = ['assessment and plan', 'assessment & plan', 'assessment/plan'];
+    for (const pat of patterns) {
+        const idx = lower.indexOf(pat);
+        if (idx !== -1) {
+            // Find the end of this line header (look for colon or newline)
+            let end = idx + pat.length;
+            if (text[end] === ':') end++;
+            return { index: idx, length: end - idx };
+        }
+    }
+    return null;
+}
 
 function createMainWindow() {
     const bounds = store.get('windowBounds');
@@ -37,13 +132,11 @@ function createMainWindow() {
             nodeIntegration: false,
             contextIsolation: true,
             preload: path.join(__dirname, 'preload.js')
-        },
-        icon: path.join(__dirname, 'icon.ico')
+        }
     });
 
-    mainWindow.loadFile('index.html');
+    mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
-    // Save window size on resize
     mainWindow.on('resize', () => {
         const { width, height } = mainWindow.getBounds();
         store.set('windowBounds', { width, height });
@@ -53,13 +146,10 @@ function createMainWindow() {
         mainWindow = null;
     });
 
-    // Create menu
     const menuTemplate = [
         {
             label: 'File',
-            submenu: [
-                { role: 'quit' }
-            ]
+            submenu: [{ role: 'quit' }]
         },
         {
             label: 'Edit',
@@ -71,13 +161,11 @@ function createMainWindow() {
         },
         {
             label: 'Settings',
-            submenu: [
-                {
-                    label: 'Preferences...',
-                    accelerator: 'CmdOrCtrl+,',
-                    click: () => openSettings()
-                }
-            ]
+            submenu: [{
+                label: 'Preferences...',
+                accelerator: 'CmdOrCtrl+,',
+                click: () => openSettings()
+            }]
         }
     ];
 
@@ -103,48 +191,68 @@ function openSettings() {
         }
     });
 
-    settingsWindow.loadFile('settings.html');
+    settingsWindow.loadFile(path.join(__dirname, 'settings.html'));
     settingsWindow.setMenu(null);
 
     settingsWindow.on('closed', () => {
         settingsWindow = null;
-        // Re-register hotkeys after settings close
         registerHotkeys();
     });
 }
 
 function registerHotkeys() {
-    // Unregister all first
     globalShortcut.unregisterAll();
 
-    if (!store.get('heidiCopyEnabled')) return;
-
+    const enabled = store.get('heidiCopyEnabled');
     const hpiKey = store.get('hpiHotkey');
     const apKey = store.get('apHotkey');
 
-    // Register HPI hotkey
+    console.log('registerHotkeys called — enabled:', enabled, 'hpiKey:', hpiKey, 'apKey:', apKey);
+
+    if (!enabled) {
+        console.log('Heidi copy disabled, skipping hotkey registration');
+        if (mainWindow) mainWindow.webContents.send('hotkey-status', { registered: false, reason: 'disabled' });
+        return;
+    }
+
+    let hpiOk = false, apOk = false;
+
     try {
-        globalShortcut.register(hpiKey, () => {
+        hpiOk = globalShortcut.register(hpiKey, () => {
+            console.log('HPI hotkey triggered!');
             extractAndCopySection('hpi');
         });
+        console.log('HPI hotkey register result:', hpiOk);
     } catch (e) {
         console.error('Failed to register HPI hotkey:', e);
     }
 
-    // Register A&P hotkey
     try {
-        globalShortcut.register(apKey, () => {
+        apOk = globalShortcut.register(apKey, () => {
+            console.log('A&P hotkey triggered!');
             extractAndCopySection('ap');
         });
+        console.log('A&P hotkey register result:', apOk);
     } catch (e) {
         console.error('Failed to register A&P hotkey:', e);
     }
+
+    if (mainWindow) {
+        mainWindow.webContents.send('hotkey-status', { registered: true, hpiOk, apOk, hpiKey, apKey });
+    }
 }
 
-function extractAndCopySection(section) {
-    // Get current clipboard content (should be from Heidi after Ctrl+A, Ctrl+C)
-    // Note: User needs to Ctrl+A, Ctrl+C in Heidi first, then press the hotkey
-    // Or we can simulate it - but simulating keystrokes on Windows requires native modules
+async function extractAndCopySection(section) {
+    try {
+        // Send Ctrl+A then Ctrl+C to the foreground window (e.g. Heidi)
+        const psScript = "Add-Type -AssemblyName System.Windows.Forms; Start-Sleep -Milliseconds 50; [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 100; [System.Windows.Forms.SendKeys]::SendWait('^c'); Start-Sleep -Milliseconds 100;";
+        execSync(`powershell -NoProfile -Command "${psScript}"`, { timeout: 3000 });
+    } catch (e) {
+        console.error('Failed to auto-copy from foreground window:', e);
+    }
+
+    // Small delay to let clipboard populate
+    await new Promise(r => setTimeout(r, 150));
 
     const text = clipboard.readText();
     if (!text) return;
@@ -158,7 +266,6 @@ function extractAndCopySection(section) {
 
     if (extracted) {
         clipboard.writeText(extracted);
-        // Notify the renderer
         if (mainWindow) {
             mainWindow.webContents.send('section-copied', section);
         }
@@ -166,64 +273,158 @@ function extractAndCopySection(section) {
 }
 
 function extractHPI(text) {
-    // Find HPI start
     let hpiStart = -1;
-    let usedHeader = '';
-
     for (const header of HPI_HEADERS) {
         const idx = text.indexOf(header);
         if (idx !== -1) {
             hpiStart = idx + header.length;
-            usedHeader = header;
             break;
         }
     }
-
-    if (hpiStart === -1) return null;
-
-    // Find A&P (end of HPI)
-    const apStart = text.indexOf(AP_HEADER);
-    if (apStart === -1 || apStart <= hpiStart) return null;
-
-    let extracted = text.substring(hpiStart, apStart);
-    return cleanUpText(extracted);
+    if (hpiStart === -1) {
+        console.log('HPI header not found in text. First 200 chars:', text.substring(0, 200));
+        return null;
+    }
+    const ap = findAPStart(text);
+    if (!ap || ap.index <= hpiStart) {
+        console.log('A&P header not found after HPI');
+        return null;
+    }
+    return cleanUpText(text.substring(hpiStart, ap.index));
 }
 
 function extractAP(text) {
-    const apStart = text.indexOf(AP_HEADER);
-    if (apStart === -1) return null;
-
-    let extracted = text.substring(apStart + AP_HEADER.length);
-    return cleanUpText(extracted);
+    const ap = findAPStart(text);
+    if (!ap) {
+        console.log('A&P header not found in text. First 500 chars:', text.substring(0, 500));
+        return null;
+    }
+    console.log('Found A&P header at index', ap.index, ':', text.substring(ap.index, ap.index + 30));
+    return cleanUpText(text.substring(ap.index + ap.length));
 }
 
 function cleanUpText(text) {
-    // Strip asterisks (NOT convert to caps)
     let cleaned = text.replace(/\*\*/g, '').replace(/\*/g, '');
-
-    // Trim whitespace
     cleaned = cleaned.trim();
-
-    // Remove leading blank lines
     const lines = cleaned.split('\n');
     let startIdx = 0;
     for (let i = 0; i < lines.length; i++) {
-        if (lines[i].trim()) {
-            startIdx = i;
-            break;
-        }
+        if (lines[i].trim()) { startIdx = i; break; }
     }
-    cleaned = lines.slice(startIdx).join('\n');
-
-    return cleaned;
+    return lines.slice(startIdx).join('\n');
 }
 
-// IPC handlers
+// ── Screen capture ──────────────────────────────────────────────────────────
+// Captures the screen, shows a fullscreen overlay for region selection,
+// returns the cropped NativeImage as a PNG data URL.
+
+let screenshotImage = null; // NativeImage of full screen capture
+
+ipcMain.handle('start-screen-capture', async () => {
+    try {
+        // Get display where main window lives
+        const mainBounds = mainWindow.getBounds();
+        const display = screen.getDisplayNearestPoint({ x: mainBounds.x, y: mainBounds.y });
+
+        // Hide main window so it's not in the screenshot
+        mainWindow.hide();
+        await new Promise(r => setTimeout(r, 300));
+
+        // Capture the screen
+        const sources = await desktopCapturer.getSources({
+            types: ['screen'],
+            thumbnailSize: {
+                width: display.size.width * display.scaleFactor,
+                height: display.size.height * display.scaleFactor
+            }
+        });
+
+        const source = sources.find(s => String(s.display_id) === String(display.id)) || sources[0];
+        screenshotImage = source.thumbnail;
+
+        // Create fullscreen overlay for selection
+        overlayWindow = new BrowserWindow({
+            x: display.bounds.x,
+            y: display.bounds.y,
+            width: display.size.width,
+            height: display.size.height,
+            frame: false,
+            alwaysOnTop: true,
+            fullscreen: true,
+            skipTaskbar: true,
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true,
+                preload: path.join(__dirname, 'overlay-preload.js')
+            }
+        });
+
+        overlayWindow.loadFile(path.join(__dirname, 'overlay.html'));
+
+        overlayWindow.webContents.on('did-finish-load', () => {
+            const dataUrl = screenshotImage.toDataURL();
+            overlayWindow.webContents.send('set-screenshot', dataUrl);
+        });
+
+        // Wait for selection or cancel
+        return new Promise((resolve) => {
+            const cleanup = () => {
+                if (overlayWindow && !overlayWindow.isDestroyed()) {
+                    overlayWindow.close();
+                }
+                overlayWindow = null;
+                mainWindow.show();
+                mainWindow.focus();
+                mainWindow.setAlwaysOnTop(true);
+            };
+
+            ipcMain.once('selection-done', (event, rect) => {
+                // rect = { x, y, width, height } in screen pixels
+                if (rect && rect.width > 5 && rect.height > 5) {
+                    const scaleFactor = display.scaleFactor;
+                    const cropped = screenshotImage.crop({
+                        x: Math.round(rect.x * scaleFactor),
+                        y: Math.round(rect.y * scaleFactor),
+                        width: Math.round(rect.width * scaleFactor),
+                        height: Math.round(rect.height * scaleFactor)
+                    });
+                    cleanup();
+                    resolve({ success: true, imageDataUrl: cropped.toDataURL() });
+                } else {
+                    cleanup();
+                    resolve({ success: false, cancelled: true });
+                }
+            });
+
+            ipcMain.once('selection-cancel', () => {
+                cleanup();
+                resolve({ success: false, cancelled: true });
+            });
+
+            overlayWindow.on('closed', () => {
+                overlayWindow = null;
+                // If closed without selection
+                mainWindow.show();
+                mainWindow.setAlwaysOnTop(true);
+                resolve({ success: false, cancelled: true });
+            });
+        });
+    } catch (err) {
+        console.error('Screen capture error:', err);
+        mainWindow.show();
+        mainWindow.setAlwaysOnTop(true);
+        return { success: false, error: err.message };
+    }
+});
+
+// ── IPC handlers ────────────────────────────────────────────────────────────
+
 ipcMain.handle('get-settings', () => {
     return {
         hpiHotkey: store.get('hpiHotkey'),
         apHotkey: store.get('apHotkey'),
         heidiCopyEnabled: store.get('heidiCopyEnabled'),
+        claudeApiKey: store.get('claudeApiKey'),
         customClaudeInstructions: store.get('customClaudeInstructions'),
         customAttestationTemplate: store.get('customAttestationTemplate')
     };
@@ -233,6 +434,7 @@ ipcMain.handle('save-settings', (event, settings) => {
     store.set('hpiHotkey', settings.hpiHotkey);
     store.set('apHotkey', settings.apHotkey);
     store.set('heidiCopyEnabled', settings.heidiCopyEnabled);
+    store.set('claudeApiKey', settings.claudeApiKey);
     store.set('customClaudeInstructions', settings.customClaudeInstructions);
     store.set('customAttestationTemplate', settings.customAttestationTemplate);
     registerHotkeys();
@@ -244,6 +446,11 @@ ipcMain.handle('call-claude-api', async (event, text) => {
     return await callClaudeAPI(text, customInstructions);
 });
 
+ipcMain.handle('copy-to-clipboard', (event, text) => {
+    clipboard.writeText(text);
+    return true;
+});
+
 ipcMain.handle('get-attestation-template', () => {
     const custom = store.get('customAttestationTemplate');
     if (custom && custom.trim()) {
@@ -252,8 +459,9 @@ ipcMain.handle('get-attestation-template', () => {
     return DEFAULT_ATTESTATION_TEMPLATE;
 });
 
-// Claude API
-const API_KEY = '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';
+// ── Claude API ──────────────────────────────────────────────────────────────
+
+const BUILT_IN_API_KEY = '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';
 
 const BASE_SYSTEM_PROMPT = `You are a medical note reformatter. Transform the input according to these rules:
 
@@ -307,7 +515,7 @@ ABBREVIATIONS (expand all):
 - RTC → return to clinic
 
 OUTPUT FORMAT:
-- Use dash-space bullets (- )
+- Use dash-space bullets ( - )
 - No blank lines between bullets
 - Single line per bullet (no wrapping)
 - No nested sub-bullets
@@ -334,17 +542,22 @@ Plan:
 `;
 
 async function callClaudeAPI(text, customInstructions) {
+    const apiKey = store.get('claudeApiKey') || BUILT_IN_API_KEY;
+    if (!apiKey || !apiKey.trim()) {
+        return { success: false, error: 'No API key set. Go to Settings → Claude API to enter your key.' };
+    }
+
     let systemPrompt = BASE_SYSTEM_PROMPT;
     if (customInstructions && customInstructions.trim()) {
         systemPrompt += '\n\nADDITIONAL INSTRUCTIONS:\n' + customInstructions;
     }
 
     try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
+        const response = await net.fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'x-api-key': API_KEY,
+                'x-api-key': apiKey,
                 'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify({
@@ -367,7 +580,8 @@ async function callClaudeAPI(text, customInstructions) {
     }
 }
 
-// App lifecycle
+// ── App lifecycle ───────────────────────────────────────────────────────────
+
 app.whenReady().then(() => {
     createMainWindow();
     registerHotkeys();
@@ -377,6 +591,9 @@ app.whenReady().then(() => {
             createMainWindow();
         }
     });
+}).catch((err) => {
+    console.error('Failed to start app:', err);
+    app.quit();
 });
 
 app.on('window-all-closed', () => {

@@ -5,5 +5,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
     callClaudeAPI: (text) => ipcRenderer.invoke('call-claude-api', text),
     getAttestationTemplate: () => ipcRenderer.invoke('get-attestation-template'),
-    onSectionCopied: (callback) => ipcRenderer.on('section-copied', (event, section) => callback(section))
+    startScreenCapture: () => ipcRenderer.invoke('start-screen-capture'),
+    copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
+    onSectionCopied: (callback) => ipcRenderer.on('section-copied', (event, section) => callback(section)),
+    onHotkeyStatus: (callback) => ipcRenderer.on('hotkey-status', (event, status) => callback(status))
 });

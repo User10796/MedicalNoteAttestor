@@ -1,11 +1,13 @@
 {
   "name": "medical-note-attestor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Medical Note Attestor with Heidi Copy feature",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "inject-key": "node -e \"const fs=require('fs');const k=process.env.CLAUDE_API_KEY||'';const f='main.js';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('__CLAUDE_API_KEY__',k))\"",
     "build": "electron-builder --win portable",
+    "build-dist": "npm run inject-key && electron-builder --win portable",
     "build-dir": "electron-builder --win --dir"
   },
   "author": "Sterling Haring",
@@ -14,15 +16,12 @@
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1"
   },
-  "dependencies": {
-    "electron-store": "^8.1.0"
-  },
+  "dependencies": {},
   "build": {
     "appId": "com.sterling.medicalnoteattestor",
     "productName": "Medical Note Attestor",
     "win": {
-      "target": "portable",
-      "icon": "icon.ico"
+      "target": "portable"
     },
     "portable": {
       "artifactName": "MedicalNoteAttestor.exe"

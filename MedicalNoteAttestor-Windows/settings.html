@@ -50,7 +50,7 @@
             margin-bottom: 4px;
         }
 
-        select, textarea {
+        select, textarea, input[type="password"] {
             width: 100%;
             padding: 8px;
             border: 1px solid #e1e4e8;
@@ -58,7 +58,7 @@
             font-size: 13px;
         }
 
-        select:focus, textarea:focus {
+        select:focus, textarea:focus, input[type="password"]:focus {
             outline: none;
             border-color: #0366d6;
         }
@@ -159,6 +159,19 @@
         .tab-content.active {
             display: block;
         }
+
+        .api-key-status {
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .api-key-status.set {
+            color: #22863a;
+        }
+
+        .api-key-status.not-set {
+            color: #cb2431;
+        }
     </style>
 </head>
 <body>
@@ -218,7 +231,7 @@
             <div class="help-text">
                 <strong>How to use:</strong><br>
                 1. In Heidi, select all (Ctrl+A) and copy (Ctrl+C)<br>
-                2. Press the HPI hotkey → HPI is now on clipboard<br>
+                2. Press the HPI hotkey - HPI is now on clipboard<br>
                 3. Paste into Cerner Powerchart (Ctrl+V)<br>
                 4. Repeat for A&P section
             </div>
@@ -227,6 +240,19 @@
 
     <!-- Claude API Tab -->
     <div id="claude-tab" class="tab-content">
+        <div class="section">
+            <h2>API Key</h2>
+
+            <div class="form-group">
+                <label for="api-key">Claude API Key</label>
+                <input type="password" id="api-key" placeholder="sk-ant-...">
+                <div id="api-key-status" class="api-key-status not-set">No API key set</div>
+                <div class="help-text">
+                    Get your key from console.anthropic.com/settings/keys. Your key is stored locally and never uploaded.
+                </div>
+            </div>
+        </div>
+
         <div class="section">
             <h2>Custom Claude Instructions</h2>
 
@@ -284,6 +310,8 @@
         const hpiHotkey = document.getElementById('hpi-hotkey');
         const apHotkey = document.getElementById('ap-hotkey');
         const hotkeyWarning = document.getElementById('hotkey-warning');
+        const apiKeyInput = document.getElementById('api-key');
+        const apiKeyStatus = document.getElementById('api-key-status');
         const claudeInstructions = document.getElementById('claude-instructions');
         const attestationTemplate = document.getElementById('attestation-template');
         const saveBtn = document.getElementById('save-btn');
@@ -314,6 +342,17 @@ Plan:
             apHotkey.value = settings.apHotkey;
             claudeInstructions.value = settings.customClaudeInstructions || '';
             attestationTemplate.value = settings.customAttestationTemplate || DEFAULT_TEMPLATE;
+
+            // Show API key status (don't populate the field for security)
+            if (settings.claudeApiKey) {
+                apiKeyStatus.textContent = 'API key is set';
+                apiKeyStatus.className = 'api-key-status set';
+                apiKeyInput.placeholder = 'Key saved - enter new key to replace';
+            } else {
+                apiKeyStatus.textContent = 'No API key set';
+                apiKeyStatus.className = 'api-key-status not-set';
+            }
+
             checkHotkeyConflict();
         }
 
@@ -335,10 +374,17 @@ Plan:
 
         // Save
         saveBtn.addEventListener('click', async () => {
+            const currentSettings = await window.electronAPI.getSettings();
+
+            // Only update API key if user entered a new one
+            const newApiKey = apiKeyInput.value.trim();
+            const claudeApiKey = newApiKey ? newApiKey : currentSettings.claudeApiKey;
+
             await window.electronAPI.saveSettings({
                 heidiCopyEnabled: heidiEnabled.checked,
                 hpiHotkey: hpiHotkey.value,
                 apHotkey: apHotkey.value,
+                claudeApiKey: claudeApiKey,
                 customClaudeInstructions: claudeInstructions.value,
                 customAttestationTemplate: attestationTemplate.value === DEFAULT_TEMPLATE ? '' : attestationTemplate.value
             });

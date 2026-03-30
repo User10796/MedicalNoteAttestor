@@ -17,16 +17,14 @@ const tabContents = document.querySelectorAll('.tab-content');
 tabs.forEach(tab => {
     tab.addEventListener('click', () => {
         const tabId = tab.dataset.tab;
-
         tabs.forEach(t => t.classList.remove('active'));
         tabContents.forEach(c => c.classList.remove('active'));
-
         tab.classList.add('active');
         document.getElementById(`${tabId}-tab`).classList.add('active');
     });
 });
 
-// Plan type codes and their text
+// Plan type codes
 const PLAN_TYPES = {
     NO_CHANGES: 'ongoing plan of care as previously established by me',
     MED_CHANGES: 'new plan of care including changes to prescription medication',
@@ -34,7 +32,7 @@ const PLAN_TYPES = {
     PROCEDURE_TODAY: 'new plan of care including the procedure performed today'
 };
 
-// Load settings and update UI
+// Load settings
 async function loadSettings() {
     try {
         const settings = await window.electronAPI.getSettings();
@@ -47,35 +45,105 @@ async function loadSettings() {
 
 loadSettings();
 
-// Listen for section copied events from main process
+// Hotkey registration status
+window.electronAPI.onHotkeyStatus((status) => {
+    console.log('Hotkey status:', status);
+    if (!status.registered) {
+        heidiStatus.textContent = 'Hotkeys disabled in settings';
+        heidiStatus.className = 'status error';
+    } else {
+        const msgs = [];
+        if (!status.hpiOk) msgs.push(`HPI (${status.hpiKey}) FAILED to register`);
+        if (!status.apOk) msgs.push(`A&P (${status.apKey}) FAILED to register`);
+        if (msgs.length > 0) {
+            heidiStatus.textContent = '⚠ ' + msgs.join(', ');
+            heidiStatus.className = 'status error';
+        } else {
+            heidiStatus.textContent = `✓ Hotkeys active: ${status.hpiKey} (HPI), ${status.apKey} (A&P)`;
+            heidiStatus.className = 'status success';
+        }
+    }
+});
+
+// Heidi copy events
 window.electronAPI.onSectionCopied((section) => {
     const sectionName = section === 'hpi' ? 'HPI' : 'A&P';
     heidiStatus.textContent = `✓ ${sectionName} copied to clipboard`;
     heidiStatus.className = 'status success';
-
-    // Clear status after 3 seconds
     setTimeout(() => {
         heidiStatus.textContent = '';
         heidiStatus.className = 'status';
     }, 3000);
 });
 
-// Select/Process button - reads from clipboard and processes
+// ── Tesseract.js OCR (loaded dynamically) ─────────────────────────────────
+
+let tesseractLoaded = false;
+let Tesseract = null;
+
+async function loadTesseract() {
+    if (tesseractLoaded) return;
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+        script.onload = () => {
+            Tesseract = window.Tesseract;
+            tesseractLoaded = true;
+            resolve();
+        };
+        script.onerror = () => reject(new Error('Failed to load Tesseract.js. Check your internet connection.'));
+        document.head.appendChild(script);
+    });
+}
+
+async function performOCR(imageDataUrl) {
+    await loadTesseract();
+    const worker = await Tesseract.createWorker('eng');
+    const { data: { text } } = await worker.recognize(imageDataUrl);
+    await worker.terminate();
+    return text;
+}
+
+// ── Select button: screen capture → OCR → Claude API ──────────────────────
+
 selectBtn.addEventListener('click', async () => {
     try {
-        // Read from clipboard
-        const clipboardText = await navigator.clipboard.readText();
+        // Clear output
+        outputArea.textContent = 'Select a region on screen...';
+        setStatus('Drag to select text area', '');
 
-        if (!clipboardText || !clipboardText.trim()) {
-            setStatus('No text in clipboard. Copy text from Heidi first.', 'error');
+        // Start screen capture (main process handles overlay)
+        const captureResult = await window.electronAPI.startScreenCapture();
+
+        if (!captureResult.success) {
+            if (captureResult.cancelled) {
+                outputArea.textContent = "Click 'Select' to capture screen text...";
+                setStatus('', '');
+            } else {
+                setStatus(`Capture error: ${captureResult.error}`, 'error');
+                outputArea.textContent = `Error: ${captureResult.error}`;
+            }
             return;
         }
 
-        setStatus('Processing with Claude API...', '');
+        // OCR the captured image
+        setStatus('Extracting text (OCR)...', '');
         setLoading(true);
+
+        const ocrText = await performOCR(captureResult.imageDataUrl);
+
+        if (!ocrText || !ocrText.trim()) {
+            setStatus('No text found in selection.', 'error');
+            outputArea.textContent = 'No text found in selected region.';
+            setLoading(false);
+            return;
+        }
+
+        // Send to Claude API
+        setStatus('Processing with Claude API...', '');
         outputArea.textContent = 'Processing...';
 
-        const result = await window.electronAPI.callClaudeAPI(clipboardText);
+        const result = await window.electronAPI.callClaudeAPI(ocrText);
 
         if (!result.success) {
             setStatus(`Error: ${result.error}`, 'error');
@@ -84,14 +152,13 @@ selectBtn.addEventListener('click', async () => {
             return;
         }
 
-        // Build full attestation
+        // Build attestation
         const template = await window.electronAPI.getAttestationTemplate();
         const finalText = buildAttestation(result.text, template);
 
         outputArea.textContent = finalText;
         setStatus('Complete', 'success');
 
-        // Auto-copy if enabled
         if (autoCopyCheckbox.checked) {
             await copyToClipboard();
             setStatus('Complete - Copied to clipboard', 'success');
@@ -111,13 +178,13 @@ copyBtn.addEventListener('click', async () => {
 
 // Clear button
 clearBtn.addEventListener('click', () => {
-    outputArea.textContent = 'Paste text from Heidi and click "Paste & Process" to format...';
+    outputArea.textContent = "Click 'Select' to capture screen text...";
     setStatus('', '');
 });
 
 async function copyToClipboard() {
     try {
-        await navigator.clipboard.writeText(outputArea.textContent);
+        await window.electronAPI.copyToClipboard(outputArea.textContent);
         setStatus('Copied to clipboard', 'success');
     } catch (error) {
         setStatus('Failed to copy', 'error');
@@ -135,16 +202,10 @@ function setLoading(loading) {
 }
 
 function buildAttestation(claudeResponse, template) {
-    // Extract plan type
     const planType = extractPlanType(claudeResponse);
     const dynamicText = PLAN_TYPES[planType] || PLAN_TYPES.NO_CHANGES;
-
-    // Clean up bullets
     const cleanedBullets = cleanUpBullets(claudeResponse);
-
-    // Replace placeholder in template
     const attestation = template.replace('[DYNAMIC_PLAN_TEXT]', dynamicText);
-
     return attestation + cleanedBullets;
 }
 
@@ -169,7 +230,7 @@ function extractPlanType(text) {
         lower.includes('- change:');
 
     if (hasScheduled && hasMedChanges) return 'MED_AND_SCHEDULED';
-    if (hasScheduled) return 'MED_AND_SCHEDULED';  // If scheduled, assume some changes
+    if (hasScheduled) return 'MED_AND_SCHEDULED';
     if (hasMedChanges) return 'MED_CHANGES';
     return 'NO_CHANGES';
 }
@@ -177,19 +238,15 @@ function extractPlanType(text) {
 function cleanUpBullets(text) {
     let lines = text.split('\n');
 
-    // Remove code lines and empty lines
     lines = lines.filter(line => {
         const trimmed = line.trim();
         return trimmed && !trimmed.startsWith('[CODE:');
     });
 
-    // Normalize bullets
     lines = lines.map(line => {
         let trimmed = line.trim();
-
         if (trimmed.startsWith('- ')) return trimmed;
 
-        // Remove other bullet styles
         const bulletPrefixes = ['• ', '* ', '– ', '— ', '· '];
         for (const prefix of bulletPrefixes) {
             if (trimmed.startsWith(prefix)) {
@@ -198,9 +255,7 @@ function cleanUpBullets(text) {
             }
         }
 
-        // Remove numbered prefixes
         trimmed = trimmed.replace(/^\d+[\.\)]\s*/, '');
-
         return '- ' + trimmed;
     });
 
