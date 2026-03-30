@@ -162,13 +162,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in await AppDelegate.shared?.performCapture() }
         }
         reg(s.pasteHotkey1.keyCode, 2, &paste1HotKeyRef, OSType(0x4D4E4132)) {
-            HeidiSlotManager.shared.writeToClipboard(slot: 1)
+            Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 1) }
         }
         reg(s.pasteHotkey2.keyCode, 3, &paste2HotKeyRef, OSType(0x4D4E4133)) {
-            HeidiSlotManager.shared.writeToClipboard(slot: 2)
+            Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 2) }
         }
         reg(s.pasteHotkey3.keyCode, 4, &paste3HotKeyRef, OSType(0x4D4E4134)) {
-            HeidiSlotManager.shared.writeToClipboard(slot: 3)
+            Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 3) }
         }
     }
 
