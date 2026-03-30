@@ -21,7 +21,6 @@ enum ClaudeAPIError: Error, LocalizedError {
     }
 }
 
-@MainActor
 class ClaudeAPIClient {
     private let apiURL = URL(string: "https://api.anthropic.com/v1/messages")!
     private let model = "claude-sonnet-4-20250514"
@@ -96,6 +95,7 @@ class ClaudeAPIClient {
     """
 
     /// Get the full system prompt including any custom instructions
+    @MainActor
     private var systemPrompt: String {
         let customInstructions = SettingsManager.shared.customClaudeInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
         if customInstructions.isEmpty {
@@ -104,8 +104,10 @@ class ClaudeAPIClient {
         return baseSystemPrompt + "\n\nADDITIONAL INSTRUCTIONS:\n" + customInstructions
     }
 
+    @MainActor
     func formatMedicalNote(_ text: String) async throws -> String {
         let apiKey = try await getAPIKey()
+        let prompt = systemPrompt
 
         var request = URLRequest(url: apiURL)
         request.httpMethod = "POST"
@@ -116,7 +118,7 @@ class ClaudeAPIClient {
         let body: [String: Any] = [
             "model": model,
             "max_tokens": maxTokens,
-            "system": systemPrompt,
+            "system": prompt,
             "messages": [
                 ["role": "user", "content": text]
             ]
@@ -156,8 +158,74 @@ class ClaudeAPIClient {
         }
     }
 
+    static let actionItemSystemPrompt = """
+You are a medical note assistant. Given an Assessment and Plan section from a clinical note, extract only the concrete action items and output them as a concise bullet list.
+
+INCLUDE these categories (when present):
+- Medication changes: start, stop, or change (keep drug names and doses as written)
+- Procedures ordered or scheduled
+- Referrals
+- Labs or imaging ordered
+- Follow-up instructions (e.g. return to clinic timeframes)
+
+DO NOT include:
+- Diagnoses or problem descriptions
+- Findings or exam results
+- Rationale or explanations
+- Anything that is not a discrete action
+
+FORMAT:
+- Use dash-space bullets (- )
+- One action per bullet
+- Keep abbreviations as-is (do not expand)
+- No blank lines between bullets
+- No preamble, headers, or explanation — output ONLY the bullet list
+- If no action items are found, output nothing — return an empty string
+"""
+
+    func extractActionItems(from apText: String) async throws -> String {
+        let apiKey = try await getAPIKey()
+
+        var request = URLRequest(url: apiURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+
+        let body: [String: Any] = [
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 512,
+            "system": ClaudeAPIClient.actionItemSystemPrompt,
+            "messages": [["role": "user", "content": apText]]
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = json["error"] as? [String: Any],
+               let message = error["message"] as? String {
+                throw ClaudeAPIError.apiError(message)
+            }
+            throw ClaudeAPIError.invalidResponse
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let content = json["content"] as? [[String: Any]],
+              let text = content.first?["text"] as? String else {
+            throw ClaudeAPIError.invalidResponse
+        }
+
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @MainActor
     private func getAPIKey() async throws -> String {
-        // Embedded API key
+        let userKey = SettingsManager.shared.claudeAPIKey.trimmingCharacters(in: .whitespaces)
+        if !userKey.isEmpty { return userKey }
         return "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"
     }
 }

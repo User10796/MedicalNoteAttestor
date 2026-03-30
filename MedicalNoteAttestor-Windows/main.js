@@ -8,6 +8,11 @@ const DEFAULTS = {
     hpiHotkey: 'PageUp',
     apHotkey: 'PageDown',
     heidiCopyEnabled: true,
+    captureHotkey: 'Alt+C',
+    pasteHotkey1: 'Alt+1',
+    pasteHotkey2: 'Alt+2',
+    pasteHotkey3: 'Alt+3',
+    examDotPhrase: '',
     claudeApiKey: '',
     customClaudeInstructions: '',
     customAttestationTemplate: '',
@@ -72,6 +77,13 @@ const store = {
     get: (key) => configData[key] !== undefined ? configData[key] : DEFAULTS[key],
     set: (key, value) => { configData[key] = value; saveConfig(configData); }
 };
+
+// In-memory note slots — reset on quit (patient safety)
+const slots = { hpi: null, ap: null };
+
+function getExamSlot() {
+    return store.get('examDotPhrase') || '';
+}
 
 let mainWindow;
 let settingsWindow;
@@ -181,7 +193,7 @@ function openSettings() {
 
     settingsWindow = new BrowserWindow({
         width: 550,
-        height: 500,
+        height: 600,
         parent: mainWindow,
         modal: false,
         webPreferences: {
@@ -201,44 +213,33 @@ function openSettings() {
 }
 
 function registerHotkeys() {
-    globalShortcut.unregisterAll();
-
-    const enabled = store.get('heidiCopyEnabled');
-    const hpiKey = store.get('hpiHotkey');
-    const apKey = store.get('apHotkey');
-
-    console.log('registerHotkeys called — enabled:', enabled, 'hpiKey:', hpiKey, 'apKey:', apKey);
-
-    if (!enabled) {
-        console.log('Heidi copy disabled, skipping hotkey registration');
-        if (mainWindow) mainWindow.webContents.send('hotkey-status', { registered: false, reason: 'disabled' });
-        return;
-    }
-
-    let hpiOk = false, apOk = false;
-
     try {
-        hpiOk = globalShortcut.register(hpiKey, () => {
-            console.log('HPI hotkey triggered!');
-            extractAndCopySection('hpi');
-        });
-        console.log('HPI hotkey register result:', hpiOk);
-    } catch (e) {
-        console.error('Failed to register HPI hotkey:', e);
-    }
+        globalShortcut.unregisterAll();
 
-    try {
-        apOk = globalShortcut.register(apKey, () => {
-            console.log('A&P hotkey triggered!');
-            extractAndCopySection('ap');
-        });
-        console.log('A&P hotkey register result:', apOk);
-    } catch (e) {
-        console.error('Failed to register A&P hotkey:', e);
-    }
+        const captureKey = store.get('captureHotkey') || 'Alt+C';
+        const paste1Key  = store.get('pasteHotkey1')  || 'Alt+1';
+        const paste2Key  = store.get('pasteHotkey2')  || 'Alt+2';
+        const paste3Key  = store.get('pasteHotkey3')  || 'Alt+3';
+        const hpiKey     = store.get('hpiHotkey')     || 'PageUp';
+        const apKey      = store.get('apHotkey')      || 'PageDown';
 
-    if (mainWindow) {
-        mainWindow.webContents.send('hotkey-status', { registered: true, hpiOk, apOk, hpiKey, apKey });
+        const tryRegister = (key, fn) => {
+            try { if (key) globalShortcut.register(key, fn); }
+            catch (e) { console.error(`Failed to register "${key}":`, e.message); }
+        };
+
+        // Legacy single-section hotkeys (kept for backwards compat)
+        tryRegister(hpiKey, () => extractAndCopySection('hpi'));
+        tryRegister(apKey,  () => extractAndCopySection('ap'));
+
+        // New capture + paste hotkeys
+        tryRegister(captureKey, () => performCapture());
+        tryRegister(paste1Key,  () => pasteSlot('hpi'));
+        tryRegister(paste2Key,  () => pasteSlot('exam'));
+        tryRegister(paste3Key,  () => pasteSlot('ap'));
+
+    } catch (err) {
+        console.error('registerHotkeys failed:', err.message);
     }
 }
 
@@ -312,6 +313,59 @@ function cleanUpText(text) {
         if (lines[i].trim()) { startIdx = i; break; }
     }
     return lines.slice(startIdx).join('\n');
+}
+
+// ── v2 Slot capture and paste ──────────────────────────────────────────────
+
+function performCapture() {
+    const text = clipboard.readText();
+    if (!text || !text.trim()) {
+        if (mainWindow) mainWindow.webContents.send('capture-result',
+            { success: false, reason: 'empty' });
+        return;
+    }
+
+    slots.hpi = extractHPI(text) || null;
+    slots.ap  = extractAP(text)  || null;
+    const exam = getExamSlot();
+
+    if (mainWindow) mainWindow.webContents.send('capture-result', {
+        success: true,
+        hpiLoaded:   !!slots.hpi,
+        apLoaded:    !!slots.ap,
+        examLoaded:  !!exam,
+        hpiPreview:  slots.hpi ? slots.hpi.substring(0, 80) : null,
+        apPreview:   slots.ap  ? slots.ap.substring(0, 80)  : null,
+        examPreview: exam       ? exam.substring(0, 80)      : null,
+        bulletsLoading: !!slots.ap
+    });
+
+    // Fire bullet enrichment in background — non-blocking
+    if (slots.ap) {
+        const originalAP = slots.ap;
+        extractActionItems(originalAP).then(bullets => {
+            if (bullets && bullets.trim() && slots.ap === originalAP) {
+                slots.ap = originalAP + '\n\n' + bullets;
+            }
+            if (mainWindow) mainWindow.webContents.send('bullets-ready', {
+                apPreview: slots.ap ? slots.ap.substring(0, 80) : null
+            });
+        });
+    }
+}
+
+function pasteSlot(slotName) {
+    let content;
+    if      (slotName === 'hpi')  content = slots.hpi;
+    else if (slotName === 'exam') content = getExamSlot();
+    else if (slotName === 'ap')   content = slots.ap;
+
+    if (content && content.trim()) {
+        clipboard.writeText(content);
+        if (mainWindow) mainWindow.webContents.send('slot-pasted', slotName);
+    } else {
+        if (mainWindow) mainWindow.webContents.send('slot-empty', slotName);
+    }
 }
 
 // ── Screen capture ──────────────────────────────────────────────────────────
@@ -421,22 +475,32 @@ ipcMain.handle('start-screen-capture', async () => {
 
 ipcMain.handle('get-settings', () => {
     return {
-        hpiHotkey: store.get('hpiHotkey'),
-        apHotkey: store.get('apHotkey'),
-        heidiCopyEnabled: store.get('heidiCopyEnabled'),
-        claudeApiKey: store.get('claudeApiKey'),
+        hpiHotkey:                store.get('hpiHotkey'),
+        apHotkey:                 store.get('apHotkey'),
+        heidiCopyEnabled:         store.get('heidiCopyEnabled'),
+        captureHotkey:            store.get('captureHotkey'),
+        pasteHotkey1:             store.get('pasteHotkey1'),
+        pasteHotkey2:             store.get('pasteHotkey2'),
+        pasteHotkey3:             store.get('pasteHotkey3'),
+        examDotPhrase:            store.get('examDotPhrase'),
+        claudeApiKey:             store.get('claudeApiKey'),
         customClaudeInstructions: store.get('customClaudeInstructions'),
-        customAttestationTemplate: store.get('customAttestationTemplate')
+        customAttestationTemplate:store.get('customAttestationTemplate')
     };
 });
 
-ipcMain.handle('save-settings', (event, settings) => {
-    store.set('hpiHotkey', settings.hpiHotkey);
-    store.set('apHotkey', settings.apHotkey);
-    store.set('heidiCopyEnabled', settings.heidiCopyEnabled);
-    store.set('claudeApiKey', settings.claudeApiKey);
+ipcMain.handle('save-settings', (e, settings) => {
+    store.set('hpiHotkey',                settings.hpiHotkey);
+    store.set('apHotkey',                 settings.apHotkey);
+    store.set('heidiCopyEnabled',         settings.heidiCopyEnabled);
+    store.set('captureHotkey',            settings.captureHotkey);
+    store.set('pasteHotkey1',             settings.pasteHotkey1);
+    store.set('pasteHotkey2',             settings.pasteHotkey2);
+    store.set('pasteHotkey3',             settings.pasteHotkey3);
+    store.set('examDotPhrase',            settings.examDotPhrase);
+    store.set('claudeApiKey',             settings.claudeApiKey);
     store.set('customClaudeInstructions', settings.customClaudeInstructions);
-    store.set('customAttestationTemplate', settings.customAttestationTemplate);
+    store.set('customAttestationTemplate',settings.customAttestationTemplate);
     registerHotkeys();
     return true;
 });
@@ -457,6 +521,22 @@ ipcMain.handle('get-attestation-template', () => {
         return custom;
     }
     return DEFAULT_ATTESTATION_TEMPLATE;
+});
+
+ipcMain.handle('get-slot-state', () => ({
+    hpiLoaded:   !!slots.hpi,
+    apLoaded:    !!slots.ap,
+    examLoaded:  !!getExamSlot(),
+    hpiPreview:  slots.hpi      ? slots.hpi.substring(0, 80)      : null,
+    apPreview:   slots.ap       ? slots.ap.substring(0, 80)       : null,
+    examPreview: getExamSlot()  ? getExamSlot().substring(0, 80)  : null
+}));
+
+ipcMain.handle('trigger-capture', () => { performCapture(); return true; });
+ipcMain.handle('paste-slot', (e, name) => { pasteSlot(name); return true; });
+ipcMain.handle('clear-slots', () => { slots.hpi = null; slots.ap = null; return true; });
+ipcMain.handle('save-exam-dot-phrase', (e, text) => {
+    store.set('examDotPhrase', text); return true;
 });
 
 // ── Claude API ──────────────────────────────────────────────────────────────
@@ -525,6 +605,55 @@ OUTPUT FORMAT:
   [CODE:MED_CHANGES] - if medication changes only (Start/Stop/Change present)
   [CODE:MED_AND_SCHEDULED] - if medication changes AND a scheduled procedure
   [CODE:PROCEDURE_TODAY] - if a procedure was performed today`;
+
+const ACTION_ITEM_PROMPT = `You are a medical note assistant. Given an Assessment and Plan section from a clinical note, extract only the concrete action items and output them as a concise bullet list.
+
+INCLUDE these categories (when present):
+- Medication changes: start, stop, or change (keep drug names and doses as written)
+- Procedures ordered or scheduled
+- Referrals
+- Labs or imaging ordered
+- Follow-up instructions (e.g. return to clinic timeframes)
+
+DO NOT include:
+- Diagnoses or problem descriptions
+- Findings or exam results
+- Rationale or explanations
+- Anything that is not a discrete action
+
+FORMAT:
+- Use dash-space bullets (- )
+- One action per bullet
+- Keep abbreviations as-is (do not expand)
+- No blank lines between bullets
+- No preamble, headers, or explanation — output ONLY the bullet list
+- If no action items are found, output nothing — return an empty string`;
+
+async function extractActionItems(apText) {
+    const apiKey = (store.get('claudeApiKey') || '').trim() || BUILT_IN_API_KEY;
+    try {
+        const response = await net.fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 512,
+                system: ACTION_ITEM_PROMPT,
+                messages: [{ role: 'user', content: apText }]
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error?.message || `HTTP ${response.status}`);
+        return (data.content[0].text || '').trim();
+    } catch (e) {
+        console.error('Action item extraction failed:', e.message);
+        return null;
+    }
+}
 
 const DEFAULT_ATTESTATION_TEMPLATE = `For this patient encounter, I personally saw this patient and formulated the plan together with the APP at the time of this visit. I agree with the [DYNAMIC_PLAN_TEXT]. I reviewed the APP's documentation, medical decision making and treatment plan, and agree with the documentation above. By my electronic signature I authenticate all APP orders and attest that all pages have been reviewed and completed.
 

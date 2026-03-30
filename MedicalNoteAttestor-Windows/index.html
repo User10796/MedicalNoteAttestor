@@ -94,6 +94,38 @@
             display: flex;
         }
 
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: #0366d6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0256b9;
+        }
+
+        .btn-primary:disabled {
+            background: #a0c4e8;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #fafbfc;
+            border: 1px solid #e1e4e8;
+            color: #24292e;
+        }
+
+        .btn-secondary:hover {
+            background: #f3f4f6;
+        }
+
         .btn-select {
             width: 100%;
             padding: 10px;
@@ -196,6 +228,42 @@
             margin-top: 12px;
             min-height: 16px;
         }
+
+        .hotkey-display {
+            background: #f1f1f1;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            padding: 1px 6px;
+            font-family: 'Consolas', monospace;
+            font-size: 10px;
+        }
+
+        .slot-card {
+            display: flex; align-items: flex-start; gap: 10px;
+            background: white; border: 1px solid #e1e4e8;
+            border-radius: 6px; padding: 10px; margin-bottom: 8px;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .slot-card.highlighted { background: #ddf4ff; border-color: #0366d6; }
+        .slot-icon { font-size: 15px; padding-top: 2px; flex-shrink: 0; }
+        .slot-body { flex: 1; min-width: 0; }
+        .slot-label {
+            font-size: 12px; font-weight: 600; color: #586069;
+            margin-bottom: 2px; display: flex; align-items: center; gap: 6px;
+        }
+        .slot-preview {
+            font-size: 11px; color: #24292e; font-family: 'Consolas', monospace;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .slot-preview.empty { color: #959da5; font-style: italic; }
+        .slot-copy-btn { font-size: 11px; padding: 3px 8px; flex-shrink: 0; align-self: flex-start; }
+        .capture-btn { width: 100%; margin-bottom: 8px; padding: 10px; font-size: 14px; }
+        .paste-legend { font-size: 11px; color: #959da5; text-align: center; margin-top: 6px; }
+        .capture-note {
+            font-size: 11px; color: #586069; background: #f6f8fa;
+            border: 1px solid #e1e4e8; border-radius: 4px;
+            padding: 8px 10px; margin-bottom: 10px; line-height: 1.6;
+        }
     </style>
 </head>
 <body>
@@ -235,19 +303,64 @@
 
     <!-- Heidi Copy Tab -->
     <div id="heidi-tab" class="tab-content">
-        <div class="heidi-info">
-            <h3>Heidi Copy Hotkeys</h3>
-            <p>In Heidi, press <strong>Ctrl+A</strong> then <strong>Ctrl+C</strong> to copy all text, then:</p>
-            <br>
-            <p><kbd id="hpi-key">PageUp</kbd> &rarr; Copies <strong>HPI</strong> section to clipboard (asterisks removed)</p>
-            <br>
-            <p><kbd id="ap-key">PageDown</kbd> &rarr; Copies <strong>A&P</strong> section to clipboard (asterisks removed)</p>
-            <br>
-            <p>Then paste into Cerner PowerChart with <strong>Ctrl+V</strong>.</p>
-            <br>
-            <p style="font-size:11px; color:#888;">Configure hotkeys in Settings &rarr; Preferences</p>
-            <div id="heidi-status" class="status"></div>
+        <div class="capture-note">
+            <strong>Step 1:</strong> In Heidi, press
+            <kbd>Ctrl+A</kbd> then <kbd>Ctrl+C</kbd> to copy the full note.<br>
+            <strong>Step 2:</strong> Press
+            <kbd id="capture-key-label">Alt+C</kbd> (or click below) to load all slots.
         </div>
+
+        <!-- Slot order: HPI → Exam → A/P -->
+        <div class="slot-card" id="slot-hpi">
+            <div class="slot-icon" id="hpi-icon">&#9898;</div>
+            <div class="slot-body">
+                <div class="slot-label">HPI
+                    <span class="hotkey-display" id="paste1-key-label">Alt+1</span>
+                </div>
+                <div class="slot-preview empty" id="hpi-preview">Empty</div>
+            </div>
+            <button class="btn btn-secondary slot-copy-btn"
+                    onclick="manualCopySlot('hpi')">Copy</button>
+        </div>
+
+        <div class="slot-card" id="slot-exam">
+            <div class="slot-icon" id="exam-icon">&#9898;</div>
+            <div class="slot-body">
+                <div class="slot-label">Exam
+                    <span class="hotkey-display" id="paste2-key-label">Alt+2</span>
+                </div>
+                <div class="slot-preview empty" id="exam-preview">Configure in Settings &rarr; Heidi Copy</div>
+            </div>
+            <button class="btn btn-secondary slot-copy-btn"
+                    onclick="manualCopySlot('exam')">Copy</button>
+        </div>
+
+        <div class="slot-card" id="slot-ap">
+            <div class="slot-icon" id="ap-icon">&#9898;</div>
+            <div class="slot-body">
+                <div class="slot-label">A/P
+                    <span class="hotkey-display" id="paste3-key-label">Alt+3</span>
+                </div>
+                <div class="slot-preview empty" id="ap-preview">Empty</div>
+            </div>
+            <button class="btn btn-secondary slot-copy-btn"
+                    onclick="manualCopySlot('ap')">Copy</button>
+        </div>
+
+        <button id="capture-btn" class="btn btn-primary capture-btn"
+                onclick="triggerCapture()">&#128203; Capture Note</button>
+
+        <div style="display:flex; gap:8px; margin-bottom:4px;">
+            <button class="btn btn-secondary" style="flex:1"
+                    onclick="clearSlots()">Clear</button>
+        </div>
+
+        <div class="paste-legend" id="paste-legend">
+            Alt+1 HPI &nbsp;&middot;&nbsp; Alt+2 Exam &nbsp;&middot;&nbsp; Alt+3 A/P
+        </div>
+
+        <div id="heidi-status" class="status"
+             style="margin-top:10px; text-align:center;"></div>
     </div>
 
     <script src="renderer.js"></script>

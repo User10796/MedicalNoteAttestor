@@ -1,6 +1,6 @@
 {
   "name": "medical-note-attestor",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "Medical Note Attestor with Heidi Copy feature",
   "main": "main.js",
   "scripts": {

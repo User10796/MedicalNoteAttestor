@@ -31,13 +31,19 @@ struct MedicalNoteAttestorApp: App {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    static weak var shared: AppDelegate?
+
     private var eventHandler: EventHandlerRef?
-    private var hpiHotKeyRef: EventHotKeyRef?
-    private var apHotKeyRef: EventHotKeyRef?
+    private var captureHotKeyRef: EventHotKeyRef?
+    private var paste1HotKeyRef:  EventHotKeyRef?
+    private var paste2HotKeyRef:  EventHotKeyRef?
+    private var paste3HotKeyRef:  EventHotKeyRef?
     private let heidiCopyService = HeidiCopyService()
     private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppDelegate.shared = self
+
         // Set window to floating level (always on top) and make resizable
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             if let window = NSApplication.shared.windows.first {
@@ -137,70 +143,66 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func registerGlobalHotkeys() {
-        guard SettingsManager.shared.heidiCopyEnabled else { return }
+        let s = SettingsManager.shared
 
-        let hpiKeyCode = SettingsManager.shared.hpiHotkey.keyCode
-        let apKeyCode = SettingsManager.shared.apHotkey.keyCode
-
-        // Register HPI hotkey (id: 1)
-        var hpiHotKeyID = EventHotKeyID()
-        hpiHotKeyID.signature = OSType(0x4D4E4131) // 'MNA1' in hex
-        hpiHotKeyID.id = 1
-
-        let hpiStatus = RegisterEventHotKey(
-            hpiKeyCode,
-            0, // No modifiers
-            hpiHotKeyID,
-            GetEventDispatcherTarget(),
-            0,
-            &hpiHotKeyRef
-        )
-
-        if hpiStatus == noErr {
-            HotkeyActions.shared.actions[1] = { [weak self] in
-                logger.info("HPI hotkey pressed!")
-                self?.heidiCopyService.extractAndCopySection(.hpi)
+        func reg(_ keyCode: UInt32, _ id: UInt32,
+                 _ ref: inout EventHotKeyRef?, _ sig: OSType,
+                 action: @escaping () -> Void) {
+            var hkID = EventHotKeyID()
+            hkID.signature = sig
+            hkID.id = id
+            let status = RegisterEventHotKey(keyCode, 0, hkID,
+                                             GetEventDispatcherTarget(), 0, &ref)
+            if status == noErr {
+                HotkeyActions.shared.actions[id] = action
             }
-            logger.info("HPI hotkey registered successfully")
-        } else {
-            logger.error("Failed to register HPI hotkey: \(hpiStatus)")
         }
 
-        // Register A&P hotkey (id: 2)
-        var apHotKeyID = EventHotKeyID()
-        apHotKeyID.signature = OSType(0x4D4E4132) // 'MNA2' in hex
-        apHotKeyID.id = 2
-
-        let apStatus = RegisterEventHotKey(
-            apKeyCode,
-            0, // No modifiers
-            apHotKeyID,
-            GetEventDispatcherTarget(),
-            0,
-            &apHotKeyRef
-        )
-
-        if apStatus == noErr {
-            HotkeyActions.shared.actions[2] = { [weak self] in
-                logger.info("A&P hotkey pressed!")
-                self?.heidiCopyService.extractAndCopySection(.assessmentPlan)
-            }
-            logger.info("A&P hotkey registered successfully")
-        } else {
-            logger.error("Failed to register A&P hotkey: \(apStatus)")
+        reg(s.captureHotkey.keyCode, 1, &captureHotKeyRef, OSType(0x4D4E4131)) {
+            Task { @MainActor in await AppDelegate.shared?.performCapture() }
+        }
+        reg(s.pasteHotkey1.keyCode, 2, &paste1HotKeyRef, OSType(0x4D4E4132)) {
+            HeidiSlotManager.shared.writeToClipboard(slot: 1)
+        }
+        reg(s.pasteHotkey2.keyCode, 3, &paste2HotKeyRef, OSType(0x4D4E4133)) {
+            HeidiSlotManager.shared.writeToClipboard(slot: 2)
+        }
+        reg(s.pasteHotkey3.keyCode, 4, &paste3HotKeyRef, OSType(0x4D4E4134)) {
+            HeidiSlotManager.shared.writeToClipboard(slot: 3)
         }
     }
 
     private func unregisterGlobalHotkeys() {
-        if let ref = hpiHotKeyRef {
-            UnregisterEventHotKey(ref)
-            hpiHotKeyRef = nil
-        }
-        if let ref = apHotKeyRef {
-            UnregisterEventHotKey(ref)
-            apHotKeyRef = nil
-        }
+        [captureHotKeyRef, paste1HotKeyRef, paste2HotKeyRef, paste3HotKeyRef]
+            .compactMap { $0 }.forEach { UnregisterEventHotKey($0) }
+        captureHotKeyRef = nil; paste1HotKeyRef = nil
+        paste2HotKeyRef = nil;  paste3HotKeyRef = nil
         HotkeyActions.shared.actions.removeAll()
+    }
+
+    // MARK: - Capture
+
+    @MainActor
+    func performCapture() async {
+        let slotManager = HeidiSlotManager.shared
+        let delay = SettingsManager.shared.captureDelay
+
+        slotManager.isCapturing = true
+
+        // Extract HPI — HeidiCopyService auto-triggers Cmd+A + Cmd+C
+        heidiCopyService.extractAndCopySection(.hpi)
+        try? await Task.sleep(nanoseconds: UInt64((delay + 0.35) * 1_000_000_000))
+        slotManager.hpiSlot = NSPasteboard.general.string(forType: .string)
+
+        // Extract A/P
+        heidiCopyService.extractAndCopySection(.assessmentPlan)
+        try? await Task.sleep(nanoseconds: UInt64((delay + 0.35) * 1_000_000_000))
+        slotManager.apSlot = NSPasteboard.general.string(forType: .string)
+
+        slotManager.isCapturing = false
+
+        // Enrich A/P with action bullets in background — non-blocking
+        Task { await slotManager.appendActionItems() }
     }
 }
 

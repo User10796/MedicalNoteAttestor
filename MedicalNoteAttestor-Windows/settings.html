@@ -194,7 +194,7 @@
             </div>
 
             <div class="form-group">
-                <label for="hpi-hotkey">HPI Section Hotkey</label>
+                <label for="hpi-hotkey">HPI Section Hotkey (Legacy)</label>
                 <select id="hpi-hotkey">
                     <option value="PageUp">Page Up</option>
                     <option value="PageDown">Page Down</option>
@@ -210,7 +210,7 @@
             </div>
 
             <div class="form-group">
-                <label for="ap-hotkey">A&P Section Hotkey</label>
+                <label for="ap-hotkey">A&P Section Hotkey (Legacy)</label>
                 <select id="ap-hotkey">
                     <option value="PageUp">Page Up</option>
                     <option value="PageDown" selected>Page Down</option>
@@ -224,16 +224,82 @@
                     <option value="F12">F12</option>
                 </select>
                 <div id="hotkey-warning" class="warning" style="display: none;">
-                    ⚠️ HPI and A&P hotkeys must be different
+                    &#9888;&#65039; HPI and A&P hotkeys must be different
                 </div>
             </div>
+        </div>
 
+        <div class="section">
+            <h2>v2 Capture &amp; Paste Hotkeys</h2>
+
+            <div class="form-group">
+                <label>Capture Hotkey</label>
+                <select id="capture-hotkey">
+                    <option value="Alt+C">Alt+C</option>
+                    <option value="Alt+X">Alt+X</option>
+                    <option value="Alt+Z">Alt+Z</option>
+                    <option value="Ctrl+F1">Ctrl+F1</option>
+                    <option value="Ctrl+F2">Ctrl+F2</option>
+                    <option value="Ctrl+F3">Ctrl+F3</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Paste HPI Hotkey (Slot 1)</label>
+                <select id="paste-hotkey-1">
+                    <option value="Alt+1">Alt+1</option>
+                    <option value="Alt+2">Alt+2</option>
+                    <option value="Alt+3">Alt+3</option>
+                    <option value="Alt+4">Alt+4</option>
+                    <option value="Ctrl+F4">Ctrl+F4</option>
+                    <option value="Ctrl+F5">Ctrl+F5</option>
+                    <option value="Ctrl+F6">Ctrl+F6</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Paste Exam Hotkey (Slot 2)</label>
+                <select id="paste-hotkey-2">
+                    <option value="Alt+1">Alt+1</option>
+                    <option value="Alt+2" selected>Alt+2</option>
+                    <option value="Alt+3">Alt+3</option>
+                    <option value="Alt+4">Alt+4</option>
+                    <option value="Ctrl+F4">Ctrl+F4</option>
+                    <option value="Ctrl+F5">Ctrl+F5</option>
+                    <option value="Ctrl+F6">Ctrl+F6</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Paste A/P Hotkey (Slot 3)</label>
+                <select id="paste-hotkey-3">
+                    <option value="Alt+1">Alt+1</option>
+                    <option value="Alt+2">Alt+2</option>
+                    <option value="Alt+3" selected>Alt+3</option>
+                    <option value="Alt+4">Alt+4</option>
+                    <option value="Ctrl+F4">Ctrl+F4</option>
+                    <option value="Ctrl+F5">Ctrl+F5</option>
+                    <option value="Ctrl+F6">Ctrl+F6</option>
+                </select>
+            </div>
+            <div id="paste-hotkey-warning" class="warning" style="display:none;">
+                &#9888;&#65039; Paste hotkeys must all be different
+            </div>
+            <div class="form-group">
+                <label for="exam-dot-phrase">Exam Dot Phrase (Slot 2 &mdash; Alt+2)</label>
+                <textarea id="exam-dot-phrase" rows="6"
+                    placeholder="Enter your standard exam dot phrase. Pre-loaded into Alt+2 slot."></textarea>
+                <div class="help-text">Persists across sessions. Pastes into Cerner Exam field.</div>
+            </div>
+        </div>
+
+        <div class="section">
             <div class="help-text">
-                <strong>How to use:</strong><br>
-                1. In Heidi, select all (Ctrl+A) and copy (Ctrl+C)<br>
-                2. Press the HPI hotkey - HPI is now on clipboard<br>
-                3. Paste into Cerner Powerchart (Ctrl+V)<br>
-                4. Repeat for A&P section
+                <strong>How to use (v2):</strong><br>
+                1. In Heidi, Ctrl+A then Ctrl+C to copy all text<br>
+                2. Press Capture hotkey &mdash; HPI and A/P load into slots<br>
+                3. Switch to Cerner (one trip):<br>
+                &nbsp;&nbsp;&bull; Click HPI field &rarr; Alt+1 (auto-pastes)<br>
+                &nbsp;&nbsp;&bull; Click Exam field &rarr; Alt+2 (auto-pastes)<br>
+                &nbsp;&nbsp;&bull; Click A/P field &rarr; Alt+3 (auto-pastes + action items)<br>
+                4. Save draft. Repeat for next patient.
             </div>
         </div>
     </div>
@@ -343,6 +409,13 @@ Plan:
             claudeInstructions.value = settings.customClaudeInstructions || '';
             attestationTemplate.value = settings.customAttestationTemplate || DEFAULT_TEMPLATE;
 
+            // v2 hotkeys
+            document.getElementById('capture-hotkey').value  = settings.captureHotkey  || 'Alt+C';
+            document.getElementById('paste-hotkey-1').value  = settings.pasteHotkey1   || 'Alt+1';
+            document.getElementById('paste-hotkey-2').value  = settings.pasteHotkey2   || 'Alt+2';
+            document.getElementById('paste-hotkey-3').value  = settings.pasteHotkey3   || 'Alt+3';
+            document.getElementById('exam-dot-phrase').value = settings.examDotPhrase  || '';
+
             // Show API key status (don't populate the field for security)
             if (settings.claudeApiKey) {
                 apiKeyStatus.textContent = 'API key is set';
@@ -354,6 +427,7 @@ Plan:
             }
 
             checkHotkeyConflict();
+            checkPasteHotkeyConflict();
         }
 
         loadSettings();
@@ -362,15 +436,28 @@ Plan:
         function checkHotkeyConflict() {
             if (hpiHotkey.value === apHotkey.value) {
                 hotkeyWarning.style.display = 'block';
-                saveBtn.disabled = true;
             } else {
                 hotkeyWarning.style.display = 'none';
-                saveBtn.disabled = false;
+            }
+        }
+
+        function checkPasteHotkeyConflict() {
+            const p1 = document.getElementById('paste-hotkey-1').value;
+            const p2 = document.getElementById('paste-hotkey-2').value;
+            const p3 = document.getElementById('paste-hotkey-3').value;
+            const warning = document.getElementById('paste-hotkey-warning');
+            if (p1 === p2 || p1 === p3 || p2 === p3) {
+                warning.style.display = 'block';
+            } else {
+                warning.style.display = 'none';
             }
         }
 
         hpiHotkey.addEventListener('change', checkHotkeyConflict);
         apHotkey.addEventListener('change', checkHotkeyConflict);
+        document.getElementById('paste-hotkey-1').addEventListener('change', checkPasteHotkeyConflict);
+        document.getElementById('paste-hotkey-2').addEventListener('change', checkPasteHotkeyConflict);
+        document.getElementById('paste-hotkey-3').addEventListener('change', checkPasteHotkeyConflict);
 
         // Save
         saveBtn.addEventListener('click', async () => {
@@ -384,6 +471,11 @@ Plan:
                 heidiCopyEnabled: heidiEnabled.checked,
                 hpiHotkey: hpiHotkey.value,
                 apHotkey: apHotkey.value,
+                captureHotkey:  document.getElementById('capture-hotkey').value,
+                pasteHotkey1:   document.getElementById('paste-hotkey-1').value,
+                pasteHotkey2:   document.getElementById('paste-hotkey-2').value,
+                pasteHotkey3:   document.getElementById('paste-hotkey-3').value,
+                examDotPhrase:  document.getElementById('exam-dot-phrase').value,
                 claudeApiKey: claudeApiKey,
                 customClaudeInstructions: claudeInstructions.value,
                 customAttestationTemplate: attestationTemplate.value === DEFAULT_TEMPLATE ? '' : attestationTemplate.value

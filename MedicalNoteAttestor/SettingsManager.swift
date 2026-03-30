@@ -36,19 +36,38 @@ class SettingsManager: ObservableObject {
     static let shared = SettingsManager()
 
     // UserDefaults keys
-    private let hpiHotkeyKey = "hpiHotkey"
-    private let apHotkeyKey = "apHotkey"
     private let customClaudeInstructionsKey = "customClaudeInstructions"
     private let customAttestationTemplateKey = "customAttestationTemplate"
-    private let heidiCopyEnabledKey = "heidiCopyEnabled"
+    private let captureHotkeyKey  = "captureHotkey"
+    private let pasteHotkey1Key   = "pasteHotkey1"
+    private let pasteHotkey2Key   = "pasteHotkey2"
+    private let pasteHotkey3Key   = "pasteHotkey3"
+    private let captureDelayKey   = "captureDelay"
+    private let claudeAPIKeyKey   = "claudeAPIKey"
 
     // Published properties for SwiftUI binding
-    @Published var hpiHotkey: HotkeyOption {
-        didSet { UserDefaults.standard.set(hpiHotkey.rawValue, forKey: hpiHotkeyKey) }
+    @Published var captureHotkey: HotkeyOption {
+        didSet { UserDefaults.standard.set(captureHotkey.rawValue, forKey: captureHotkeyKey) }
     }
 
-    @Published var apHotkey: HotkeyOption {
-        didSet { UserDefaults.standard.set(apHotkey.rawValue, forKey: apHotkeyKey) }
+    @Published var pasteHotkey1: HotkeyOption {
+        didSet { UserDefaults.standard.set(pasteHotkey1.rawValue, forKey: pasteHotkey1Key) }
+    }
+
+    @Published var pasteHotkey2: HotkeyOption {
+        didSet { UserDefaults.standard.set(pasteHotkey2.rawValue, forKey: pasteHotkey2Key) }
+    }
+
+    @Published var pasteHotkey3: HotkeyOption {
+        didSet { UserDefaults.standard.set(pasteHotkey3.rawValue, forKey: pasteHotkey3Key) }
+    }
+
+    @Published var captureDelay: Double {
+        didSet { UserDefaults.standard.set(captureDelay, forKey: captureDelayKey) }
+    }
+
+    @Published var claudeAPIKey: String {
+        didSet { UserDefaults.standard.set(claudeAPIKey, forKey: claudeAPIKeyKey) }
     }
 
     @Published var customClaudeInstructions: String {
@@ -57,10 +76,6 @@ class SettingsManager: ObservableObject {
 
     @Published var customAttestationTemplate: String {
         didSet { UserDefaults.standard.set(customAttestationTemplate, forKey: customAttestationTemplateKey) }
-    }
-
-    @Published var heidiCopyEnabled: Bool {
-        didSet { UserDefaults.standard.set(heidiCopyEnabled, forKey: heidiCopyEnabledKey) }
     }
 
     // Default attestation template
@@ -81,24 +96,28 @@ Plan:
 """
 
     private init() {
-        // Load saved values or use defaults
-        if let savedHPI = UserDefaults.standard.string(forKey: hpiHotkeyKey),
-           let hotkey = HotkeyOption(rawValue: savedHPI) {
-            self.hpiHotkey = hotkey
-        } else {
-            self.hpiHotkey = .pageUp
+        // Migration: clear any stale Option-key values from earlier builds
+        ["captureHotkey", "pasteHotkey1", "pasteHotkey2", "pasteHotkey3"].forEach { key in
+            if let val = UserDefaults.standard.string(forKey: key),
+               val.contains("\u{2325}") || val.contains("\u{2303}") {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
         }
 
-        if let savedAP = UserDefaults.standard.string(forKey: apHotkeyKey),
-           let hotkey = HotkeyOption(rawValue: savedAP) {
-            self.apHotkey = hotkey
-        } else {
-            self.apHotkey = .pageDown
-        }
+        // Load saved values or use defaults
+        captureHotkey = UserDefaults.standard.string(forKey: captureHotkeyKey)
+            .flatMap(HotkeyOption.init(rawValue:)) ?? .f8
+        pasteHotkey1  = UserDefaults.standard.string(forKey: pasteHotkey1Key)
+            .flatMap(HotkeyOption.init(rawValue:)) ?? .f9
+        pasteHotkey2  = UserDefaults.standard.string(forKey: pasteHotkey2Key)
+            .flatMap(HotkeyOption.init(rawValue:)) ?? .f10
+        pasteHotkey3  = UserDefaults.standard.string(forKey: pasteHotkey3Key)
+            .flatMap(HotkeyOption.init(rawValue:)) ?? .f11
+        captureDelay  = UserDefaults.standard.object(forKey: captureDelayKey) as? Double ?? 0.7
+        claudeAPIKey  = UserDefaults.standard.string(forKey: claudeAPIKeyKey) ?? ""
 
         self.customClaudeInstructions = UserDefaults.standard.string(forKey: customClaudeInstructionsKey) ?? ""
         self.customAttestationTemplate = UserDefaults.standard.string(forKey: customAttestationTemplateKey) ?? ""
-        self.heidiCopyEnabled = UserDefaults.standard.object(forKey: heidiCopyEnabledKey) as? Bool ?? true
     }
 
     /// Get the effective attestation template (custom or default)

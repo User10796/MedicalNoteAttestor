@@ -24,7 +24,7 @@ struct SettingsView: View {
                     Label("Attestation", systemImage: "doc.text")
                 }
         }
-        .frame(width: 500, height: 400)
+        .frame(width: 500, height: 580)
         .padding()
     }
 
@@ -32,48 +32,68 @@ struct SettingsView: View {
 
     private var heidiCopyTab: some View {
         Form {
-            Section {
-                Toggle("Enable Heidi Copy Hotkeys", isOn: $settings.heidiCopyEnabled)
-                    .toggleStyle(.switch)
+            Section("Hotkeys") {
+                Picker("Capture Note:", selection: $settings.captureHotkey) {
+                    ForEach(HotkeyOption.allCases) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.menu)
 
-                Text("When enabled, global hotkeys will copy HPI or A&P sections from Heidi to your clipboard.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                Picker("Paste HPI (Slot 1):", selection: $settings.pasteHotkey1) {
+                    ForEach(HotkeyOption.allCases) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.menu)
+
+                Picker("Paste Exam (Slot 2):", selection: $settings.pasteHotkey2) {
+                    ForEach(HotkeyOption.allCases) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.menu)
+
+                Picker("Paste A/P (Slot 3):", selection: $settings.pasteHotkey3) {
+                    ForEach(HotkeyOption.allCases) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.menu)
+
+                let all = [settings.captureHotkey, settings.pasteHotkey1,
+                           settings.pasteHotkey2, settings.pasteHotkey3]
+                if Set(all.map(\.rawValue)).count < all.count {
+                    Text("\u{26A0}\u{FE0F} All four hotkeys must be different")
+                        .font(.caption).foregroundColor(.red)
+                }
             }
 
-            Section("Hotkey Configuration") {
-                Picker("HPI Section Hotkey:", selection: $settings.hpiHotkey) {
-                    ForEach(HotkeyOption.allCases) { option in
-                        Text(option.rawValue).tag(option)
+            Section("Capture Timing") {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Delay between captures:")
+                        Spacer()
+                        Text("\(settings.captureDelay, specifier: "%.1f")s")
+                            .foregroundColor(.secondary)
                     }
+                    Slider(value: $settings.captureDelay, in: 0.4...1.5, step: 0.1)
+                    Text("Increase if slots don't load reliably. Default: 0.7s")
+                        .font(.caption).foregroundColor(.secondary)
                 }
-                .pickerStyle(.menu)
+            }
 
-                Picker("A&P Section Hotkey:", selection: $settings.apHotkey) {
-                    ForEach(HotkeyOption.allCases) { option in
-                        Text(option.rawValue).tag(option)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                if settings.hpiHotkey == settings.apHotkey {
-                    Text("⚠️ HPI and A&P hotkeys must be different")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
+            Section("Exam Dot Phrase") {
+                TextEditor(text: Binding(
+                    get: { HeidiSlotManager.shared.examSlot },
+                    set: { HeidiSlotManager.shared.saveExamDotPhrase($0) }
+                ))
+                .frame(height: 120)
+                .font(.system(size: 11, design: .monospaced))
+                .border(Color.gray.opacity(0.3), width: 1)
+                Text("Pre-loaded into Slot 2. Pastes into Cerner Exam field. Persists across sessions.")
+                    .font(.caption).foregroundColor(.secondary)
             }
 
             Section("How It Works") {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("1. Click into Heidi note window")
-                    Text("2. Press the HPI hotkey → HPI copied to clipboard")
-                    Text("3. Click into Cerner Powerchart HPI field → Cmd+V")
-                    Text("4. Click back into Heidi note")
-                    Text("5. Press the A&P hotkey → A&P copied to clipboard")
-                    Text("6. Click into Cerner A&P field → Cmd+V")
+                    Text("1. Open patient note in Heidi")
+                    Text("2. Press \(settings.captureHotkey.rawValue) \u{2192} HPI and A/P load automatically")
+                    Text("3. Switch to Cerner (one trip):")
+                    Text("   \u{2022} Click HPI field \u{2192} \(settings.pasteHotkey1.rawValue) (auto-pastes)")
+                    Text("   \u{2022} Click Exam field \u{2192} \(settings.pasteHotkey2.rawValue) (auto-pastes)")
+                    Text("   \u{2022} Click A/P field \u{2192} \(settings.pasteHotkey3.rawValue) (auto-pastes + action items)")
+                    Text("4. Save draft. Repeat for next patient.")
                 }
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.caption).foregroundColor(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -83,6 +103,13 @@ struct SettingsView: View {
 
     private var claudeAPITab: some View {
         Form {
+            Section("API Key") {
+                SecureField("Custom API key (optional)", text: $settings.claudeAPIKey)
+                    .font(.system(size: 12, design: .monospaced))
+                Text("Leave blank to use the built-in key.")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+
             Section("Custom Instructions") {
                 Text("Add custom instructions that will be appended to the Claude API prompt when formatting medical notes.")
                     .font(.caption)
@@ -104,9 +131,9 @@ struct SettingsView: View {
 
             Section("Examples") {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("• Always include 'Return to clinic in X weeks'")
-                    Text("• Format diagnoses in a specific way")
-                    Text("• Add specific disclaimers")
+                    Text("\u{2022} Always include 'Return to clinic in X weeks'")
+                    Text("\u{2022} Format diagnoses in a specific way")
+                    Text("\u{2022} Add specific disclaimers")
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)

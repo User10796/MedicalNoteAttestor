@@ -6,8 +6,6 @@ const autoCopyCheckbox = document.getElementById('auto-copy');
 const outputArea = document.getElementById('output');
 const statusDiv = document.getElementById('status');
 const spinner = document.getElementById('spinner');
-const hpiKeySpan = document.getElementById('hpi-key');
-const apKeySpan = document.getElementById('ap-key');
 const heidiStatus = document.getElementById('heidi-status');
 
 // Tab switching
@@ -32,19 +30,6 @@ const PLAN_TYPES = {
     PROCEDURE_TODAY: 'new plan of care including the procedure performed today'
 };
 
-// Load settings
-async function loadSettings() {
-    try {
-        const settings = await window.electronAPI.getSettings();
-        hpiKeySpan.textContent = settings.hpiHotkey;
-        apKeySpan.textContent = settings.apHotkey;
-    } catch (e) {
-        console.error('Failed to load settings:', e);
-    }
-}
-
-loadSettings();
-
 // Hotkey registration status
 window.electronAPI.onHotkeyStatus((status) => {
     console.log('Hotkey status:', status);
@@ -56,10 +41,10 @@ window.electronAPI.onHotkeyStatus((status) => {
         if (!status.hpiOk) msgs.push(`HPI (${status.hpiKey}) FAILED to register`);
         if (!status.apOk) msgs.push(`A&P (${status.apKey}) FAILED to register`);
         if (msgs.length > 0) {
-            heidiStatus.textContent = '⚠ ' + msgs.join(', ');
+            heidiStatus.textContent = '\u26A0 ' + msgs.join(', ');
             heidiStatus.className = 'status error';
         } else {
-            heidiStatus.textContent = `✓ Hotkeys active: ${status.hpiKey} (HPI), ${status.apKey} (A&P)`;
+            heidiStatus.textContent = `\u2713 Hotkeys active: ${status.hpiKey} (HPI), ${status.apKey} (A&P)`;
             heidiStatus.className = 'status success';
         }
     }
@@ -68,7 +53,7 @@ window.electronAPI.onHotkeyStatus((status) => {
 // Heidi copy events
 window.electronAPI.onSectionCopied((section) => {
     const sectionName = section === 'hpi' ? 'HPI' : 'A&P';
-    heidiStatus.textContent = `✓ ${sectionName} copied to clipboard`;
+    heidiStatus.textContent = `\u2713 ${sectionName} copied to clipboard`;
     heidiStatus.className = 'status success';
     setTimeout(() => {
         heidiStatus.textContent = '';
@@ -247,7 +232,7 @@ function cleanUpBullets(text) {
         let trimmed = line.trim();
         if (trimmed.startsWith('- ')) return trimmed;
 
-        const bulletPrefixes = ['• ', '* ', '– ', '— ', '· '];
+        const bulletPrefixes = ['\u2022 ', '* ', '\u2013 ', '\u2014 ', '\u00B7 '];
         for (const prefix of bulletPrefixes) {
             if (trimmed.startsWith(prefix)) {
                 trimmed = trimmed.slice(prefix.length);
@@ -261,3 +246,131 @@ function cleanUpBullets(text) {
 
     return lines.join('\n');
 }
+
+// ── Heidi Slot UI ────────────────────────────────────────────────────────────
+
+function updateSlotCard(slotName, loaded, preview) {
+    const icon = document.getElementById(`${slotName}-icon`);
+    const prev = document.getElementById(`${slotName}-preview`);
+    if (icon) icon.textContent = loaded ? '\u2705' : '\u26AA';
+    if (prev) {
+        if (loaded && preview) {
+            prev.textContent = preview + (preview.length >= 80 ? '\u2026' : '');
+            prev.classList.remove('empty');
+        } else {
+            prev.textContent = slotName === 'exam'
+                ? 'Configure in Settings \u2192 Heidi Copy' : 'Empty';
+            prev.classList.add('empty');
+        }
+    }
+}
+
+function flashSlotCard(slotName) {
+    const card = document.getElementById(`slot-${slotName}`);
+    if (!card) return;
+    card.classList.add('highlighted');
+    setTimeout(() => card.classList.remove('highlighted'), 400);
+}
+
+function setHeidiStatus(msg, type) {
+    type = type || '';
+    const el = document.getElementById('heidi-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'status' + (type ? ` ${type}` : '');
+    if (msg) setTimeout(() => { el.textContent = ''; el.className = 'status'; }, 3500);
+}
+
+function updateHotkeyLabels(settings) {
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('capture-key-label', settings.captureHotkey || 'Alt+C');
+    set('paste1-key-label',  settings.pasteHotkey1  || 'Alt+1');
+    set('paste2-key-label',  settings.pasteHotkey2  || 'Alt+2');
+    set('paste3-key-label',  settings.pasteHotkey3  || 'Alt+3');
+    const legend = document.getElementById('paste-legend');
+    if (legend) legend.textContent =
+        `${settings.pasteHotkey1||'Alt+1'} HPI  \u00B7  ` +
+        `${settings.pasteHotkey2||'Alt+2'} Exam  \u00B7  ` +
+        `${settings.pasteHotkey3||'Alt+3'} A/P`;
+}
+
+async function triggerCapture() {
+    const btn = document.getElementById('capture-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Capturing\u2026'; }
+    await window.electronAPI.triggerCapture();
+}
+
+async function manualCopySlot(slotName) {
+    await window.electronAPI.pasteSlot(slotName);
+}
+
+async function clearSlots() {
+    await window.electronAPI.clearSlots();
+    updateSlotCard('hpi', false, null);
+    updateSlotCard('ap', false, null);
+    setHeidiStatus('Slots cleared');
+}
+
+// Init on load
+(async () => {
+    const [state, settings] = await Promise.all([
+        window.electronAPI.getSlotState(),
+        window.electronAPI.getSettings()
+    ]);
+    updateSlotCard('hpi',  state.hpiLoaded,  state.hpiPreview);
+    updateSlotCard('exam', state.examLoaded, state.examPreview);
+    updateSlotCard('ap',   state.apLoaded,   state.apPreview);
+    updateHotkeyLabels(settings);
+    if (document.getElementById('hpi-key'))
+        document.getElementById('hpi-key').textContent = settings.hpiHotkey;
+    if (document.getElementById('ap-key'))
+        document.getElementById('ap-key').textContent = settings.apHotkey;
+})();
+
+// IPC event handlers
+window.electronAPI.onCaptureResult((data) => {
+    const btn = document.getElementById('capture-btn');
+    if (btn) { btn.disabled = false; btn.textContent = '\uD83D\uDCCB Capture Note'; }
+
+    if (!data.success) {
+        setHeidiStatus('\u26A0\uFE0F Clipboard empty \u2014 Ctrl+A + Ctrl+C in Heidi first', 'error');
+        return;
+    }
+    updateSlotCard('hpi',  data.hpiLoaded,  data.hpiPreview);
+    updateSlotCard('exam', data.examLoaded, data.examPreview);
+    updateSlotCard('ap',   data.apLoaded,   data.apPreview);
+
+    if (data.bulletsLoading) {
+        const apIcon = document.getElementById('ap-icon');
+        const apPrev = document.getElementById('ap-preview');
+        if (apIcon) apIcon.textContent = '\u23F3';
+        if (apPrev) { apPrev.textContent = (data.apPreview||'') + ' \u00B7 fetching action items\u2026';
+                      apPrev.classList.remove('empty'); }
+    }
+
+    const loaded = [data.hpiLoaded && 'HPI', data.apLoaded && 'A/P'].filter(Boolean).join(' + ');
+    const ok = data.hpiLoaded || data.apLoaded;
+    setHeidiStatus(ok ? `\u2713 Captured: ${loaded}` : '\u26A0\uFE0F No sections found', ok ? 'success' : 'error');
+});
+
+window.electronAPI.onBulletsReady((data) => {
+    const apIcon = document.getElementById('ap-icon');
+    const apPrev = document.getElementById('ap-preview');
+    if (apIcon) apIcon.textContent = '\u2705';
+    if (apPrev && data.apPreview) {
+        apPrev.textContent = data.apPreview + '\u2026';
+        apPrev.classList.remove('empty');
+    }
+    setHeidiStatus('\u2713 Action items ready', 'success');
+});
+
+window.electronAPI.onSlotPasted((slotName) => {
+    flashSlotCard(slotName);
+    const labels = { hpi: 'HPI', exam: 'Exam', ap: 'A/P' };
+    setHeidiStatus(`\u2713 ${labels[slotName]||slotName} copied to clipboard`, 'success');
+});
+
+window.electronAPI.onSlotEmpty((slotName) => {
+    const labels = { hpi: 'HPI', exam: 'Exam', ap: 'A/P' };
+    setHeidiStatus(`\u26A0\uFE0F ${labels[slotName]||slotName} slot is empty`, 'error');
+});

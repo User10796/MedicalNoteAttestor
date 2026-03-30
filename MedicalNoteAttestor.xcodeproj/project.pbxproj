@@ -18,6 +18,9 @@
 		A10000012334567800000022 /* HeidiCopyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000012334567800000014 /* HeidiCopyService.swift */; };
 		A10000012334567800000023 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000012334567800000015 /* SettingsManager.swift */; };
 		A10000012334567800000024 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000012334567800000016 /* SettingsView.swift */; };
+		A10000012334567800000025 /* HeidiSlotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000012334567800000017 /* HeidiSlotManager.swift */; };
+		A10000012334567800000026 /* HeidiTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000012334567800000018 /* HeidiTabView.swift */; };
+		A10000012334567800000027 /* AttestorTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000012334567800000019 /* AttestorTabView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +38,9 @@
 		A10000012334567800000014 /* HeidiCopyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeidiCopyService.swift; sourceTree = "<group>"; };
 		A10000012334567800000015 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		A10000012334567800000016 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A10000012334567800000017 /* HeidiSlotManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeidiSlotManager.swift; sourceTree = "<group>"; };
+		A10000012334567800000018 /* HeidiTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeidiTabView.swift; sourceTree = "<group>"; };
+		A10000012334567800000019 /* AttestorTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttestorTabView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,6 +75,9 @@
 				A10000012334567800000014 /* HeidiCopyService.swift */,
 				A10000012334567800000015 /* SettingsManager.swift */,
 				A10000012334567800000016 /* SettingsView.swift */,
+				A10000012334567800000017 /* HeidiSlotManager.swift */,
+				A10000012334567800000018 /* HeidiTabView.swift */,
+				A10000012334567800000019 /* AttestorTabView.swift */,
 				A10000012334567800000011 /* Assets.xcassets */,
 				A10000012334567800000012 /* Info.plist */,
 				A10000012334567800000013 /* MedicalNoteAttestor.entitlements */,
@@ -163,6 +172,9 @@
 				A10000012334567800000022 /* HeidiCopyService.swift in Sources */,
 				A10000012334567800000023 /* SettingsManager.swift in Sources */,
 				A10000012334567800000024 /* SettingsView.swift in Sources */,
+				A10000012334567800000025 /* HeidiSlotManager.swift in Sources */,
+				A10000012334567800000026 /* HeidiTabView.swift in Sources */,
+				A10000012334567800000027 /* AttestorTabView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -293,7 +305,7 @@
 				CODE_SIGN_ENTITLEMENTS = MedicalNoteAttestor/MedicalNoteAttestor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -305,7 +317,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.user.medicalnoteattestor;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -321,7 +333,7 @@
 				CODE_SIGN_ENTITLEMENTS = MedicalNoteAttestor/MedicalNoteAttestor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -333,7 +345,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.user.medicalnoteattestor;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
