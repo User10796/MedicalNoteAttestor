@@ -376,9 +376,21 @@ let screenshotImage = null; // NativeImage of full screen capture
 
 ipcMain.handle('start-screen-capture', async () => {
     try {
-        // Get display where main window lives
+        // Use center of main window to find correct display, fall back to primary
         const mainBounds = mainWindow.getBounds();
-        const display = screen.getDisplayNearestPoint({ x: mainBounds.x, y: mainBounds.y });
+        const mainCenter = {
+            x: mainBounds.x + Math.floor(mainBounds.width / 2),
+            y: mainBounds.y + Math.floor(mainBounds.height / 2)
+        };
+        const allDisplays = screen.getAllDisplays();
+        const primaryDisplay = screen.getPrimaryDisplay();
+        let display = allDisplays.find(d =>
+            mainCenter.x >= d.bounds.x &&
+            mainCenter.x < d.bounds.x + d.bounds.width &&
+            mainCenter.y >= d.bounds.y &&
+            mainCenter.y < d.bounds.y + d.bounds.height
+        ) || primaryDisplay;
+        console.log('Capturing display:', display.id, 'bounds:', display.bounds);
 
         // Hide main window so it's not in the screenshot
         mainWindow.hide();
@@ -388,23 +400,33 @@ ipcMain.handle('start-screen-capture', async () => {
         const sources = await desktopCapturer.getSources({
             types: ['screen'],
             thumbnailSize: {
-                width: display.size.width * display.scaleFactor,
-                height: display.size.height * display.scaleFactor
+                width: display.bounds.width * display.scaleFactor,
+                height: display.bounds.height * display.scaleFactor
             }
         });
 
         const source = sources.find(s => String(s.display_id) === String(display.id)) || sources[0];
+
+        if (!source) {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.show(); mainWindow.focus(); mainWindow.setAlwaysOnTop(true);
+            }
+            return { success: false, error: 'No screen source found' };
+        }
+
         screenshotImage = source.thumbnail;
 
-        // Create fullscreen overlay for selection
+        // Create overlay for selection — no fullscreen to avoid Citrix security blanking
         overlayWindow = new BrowserWindow({
             x: display.bounds.x,
             y: display.bounds.y,
-            width: display.size.width,
-            height: display.size.height,
+            width: display.bounds.width,
+            height: display.bounds.height,
             frame: false,
             alwaysOnTop: true,
-            fullscreen: true,
+            fullscreen: false,
+            resizable: false,
+            movable: false,
             skipTaskbar: true,
             webPreferences: {
                 nodeIntegration: false,
@@ -465,8 +487,14 @@ ipcMain.handle('start-screen-capture', async () => {
         });
     } catch (err) {
         console.error('Screen capture error:', err);
-        mainWindow.show();
-        mainWindow.setAlwaysOnTop(true);
+        try {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.show(); mainWindow.focus(); mainWindow.setAlwaysOnTop(true);
+            }
+            if (overlayWindow && !overlayWindow.isDestroyed()) {
+                overlayWindow.close(); overlayWindow = null;
+            }
+        } catch (e) { /* ignore cleanup errors */ }
         return { success: false, error: err.message };
     }
 });
