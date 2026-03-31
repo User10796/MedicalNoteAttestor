@@ -233,7 +233,7 @@ function registerHotkeys() {
         tryRegister(apKey,  () => extractAndCopySection('ap'));
 
         // New capture + paste hotkeys
-        tryRegister(captureKey, () => performCapture());
+        tryRegister(captureKey, () => { performCapture().catch(e => console.error('Capture error:', e)); });
         tryRegister(paste1Key,  () => pasteSlot('hpi'));
         tryRegister(paste2Key,  () => pasteSlot('exam'));
         tryRegister(paste3Key,  () => pasteSlot('ap'));
@@ -317,7 +317,26 @@ function cleanUpText(text) {
 
 // ── v2 Slot capture and paste ──────────────────────────────────────────────
 
-function performCapture() {
+async function performCapture() {
+    // Step 1: Auto-trigger Ctrl+A + Ctrl+C in the active foreground window (Heidi)
+    try {
+        const psScript = [
+            'Add-Type -AssemblyName System.Windows.Forms;',
+            'Start-Sleep -Milliseconds 100;',
+            '[System.Windows.Forms.SendKeys]::SendWait("^a");',
+            'Start-Sleep -Milliseconds 150;',
+            '[System.Windows.Forms.SendKeys]::SendWait("^c");',
+            'Start-Sleep -Milliseconds 200;'
+        ].join(' ');
+        execSync(`powershell -NoProfile -Command "${psScript}"`, { timeout: 4000 });
+    } catch (e) {
+        console.error('performCapture: SendKeys failed:', e.message);
+    }
+
+    // Step 2: Wait for clipboard to settle
+    await new Promise(r => setTimeout(r, 250));
+
+    // Step 3: Read and parse clipboard
     const text = clipboard.readText();
     if (!text || !text.trim()) {
         if (mainWindow) mainWindow.webContents.send('capture-result',
@@ -331,16 +350,16 @@ function performCapture() {
 
     if (mainWindow) mainWindow.webContents.send('capture-result', {
         success: true,
-        hpiLoaded:   !!slots.hpi,
-        apLoaded:    !!slots.ap,
-        examLoaded:  !!exam,
-        hpiPreview:  slots.hpi ? slots.hpi.substring(0, 80) : null,
-        apPreview:   slots.ap  ? slots.ap.substring(0, 80)  : null,
-        examPreview: exam       ? exam.substring(0, 80)      : null,
+        hpiLoaded:    !!slots.hpi,
+        apLoaded:     !!slots.ap,
+        examLoaded:   !!exam,
+        hpiPreview:   slots.hpi ? slots.hpi.substring(0, 80) : null,
+        apPreview:    slots.ap  ? slots.ap.substring(0, 80)  : null,
+        examPreview:  exam       ? exam.substring(0, 80)      : null,
         bulletsLoading: !!slots.ap
     });
 
-    // Fire bullet enrichment in background — non-blocking
+    // Step 4: Fire bullet enrichment in background
     if (slots.ap) {
         const originalAP = slots.ap;
         extractActionItems(originalAP).then(bullets => {
@@ -560,7 +579,7 @@ ipcMain.handle('get-slot-state', () => ({
     examPreview: getExamSlot()  ? getExamSlot().substring(0, 80)  : null
 }));
 
-ipcMain.handle('trigger-capture', () => { performCapture(); return true; });
+ipcMain.handle('trigger-capture', async () => { await performCapture(); return true; });
 ipcMain.handle('paste-slot', (e, name) => { pasteSlot(name); return true; });
 ipcMain.handle('clear-slots', () => { slots.hpi = null; slots.ap = null; return true; });
 ipcMain.handle('save-exam-dot-phrase', (e, text) => {
