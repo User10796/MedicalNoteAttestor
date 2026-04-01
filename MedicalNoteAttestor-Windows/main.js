@@ -8,10 +8,10 @@ const DEFAULTS = {
     hpiHotkey: 'PageUp',
     apHotkey: 'PageDown',
     heidiCopyEnabled: true,
-    captureHotkey: 'Alt+C',
-    pasteHotkey1: 'Alt+1',
-    pasteHotkey2: 'Alt+2',
-    pasteHotkey3: 'Alt+3',
+    captureHotkey: 'F8',
+    pasteHotkey1: 'F9',
+    pasteHotkey2: 'F10',
+    pasteHotkey3: 'F11',
     examDotPhrase: '',
     claudeApiKey: '',
     customClaudeInstructions: '',
@@ -216,16 +216,22 @@ function registerHotkeys() {
     try {
         globalShortcut.unregisterAll();
 
-        const captureKey = store.get('captureHotkey') || 'Alt+C';
-        const paste1Key  = store.get('pasteHotkey1')  || 'Alt+1';
-        const paste2Key  = store.get('pasteHotkey2')  || 'Alt+2';
-        const paste3Key  = store.get('pasteHotkey3')  || 'Alt+3';
+        const captureKey = store.get('captureHotkey') || 'F8';
+        const paste1Key  = store.get('pasteHotkey1')  || 'F9';
+        const paste2Key  = store.get('pasteHotkey2')  || 'F10';
+        const paste3Key  = store.get('pasteHotkey3')  || 'F11';
         const hpiKey     = store.get('hpiHotkey')     || 'PageUp';
         const apKey      = store.get('apHotkey')      || 'PageDown';
 
         const tryRegister = (key, fn) => {
-            try { if (key) globalShortcut.register(key, fn); }
-            catch (e) { console.error(`Failed to register "${key}":`, e.message); }
+            try {
+                if (key) {
+                    const ok = globalShortcut.register(key, fn);
+                    console.log(`Hotkey "${key}": ${ok ? 'registered OK' : 'FAILED TO REGISTER'}`);
+                }
+            } catch (e) {
+                console.error(`Hotkey "${key}" threw: ${e.message}`);
+            }
         };
 
         // Legacy single-section hotkeys (kept for backwards compat)
@@ -758,17 +764,40 @@ async function callClaudeAPI(text, customInstructions) {
 
 // ── App lifecycle ───────────────────────────────────────────────────────────
 
-app.whenReady().then(() => {
-    createMainWindow();
-    registerHotkeys();
+function migrateHotkeys() {
+    const altKeys = ['Alt+C', 'Alt+1', 'Alt+2', 'Alt+3', 'Alt+X', 'Alt+Z', 'Alt+H', 'Alt+4', 'Alt+5', 'Alt+6'];
+    const migrations = { captureHotkey: 'F8', pasteHotkey1: 'F9', pasteHotkey2: 'F10', pasteHotkey3: 'F11' };
+    for (const [key, defaultVal] of Object.entries(migrations)) {
+        const current = store.get(key);
+        if (!current || altKeys.includes(current)) { store.set(key, defaultVal); }
+    }
+}
+migrateHotkeys();
 
+app.whenReady().then(() => {
+    try {
+        createMainWindow();
+        registerHotkeys();
+    } catch (err) {
+        const { dialog } = require('electron');
+        dialog.showErrorBox(
+            'MedicalNoteAttestor — Startup Error',
+            'Failed to start:\n\n' + err.message + '\n\n' + (err.stack || '')
+        );
+        app.quit();
+    }
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
             createMainWindow();
         }
     });
-}).catch((err) => {
-    console.error('Failed to start app:', err);
+}).catch(err => {
+    try {
+        require('electron').dialog.showErrorBox(
+            'MedicalNoteAttestor — Fatal Error',
+            'Fatal startup error:\n\n' + err.message + '\n\n' + (err.stack || '')
+        );
+    } catch(e) {}
     app.quit();
 });
 

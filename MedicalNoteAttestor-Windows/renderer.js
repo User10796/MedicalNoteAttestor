@@ -283,15 +283,15 @@ function setHeidiStatus(msg, type) {
 
 function updateHotkeyLabels(settings) {
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    set('capture-key-label', settings.captureHotkey || 'Alt+C');
-    set('paste1-key-label',  settings.pasteHotkey1  || 'Alt+1');
-    set('paste2-key-label',  settings.pasteHotkey2  || 'Alt+2');
-    set('paste3-key-label',  settings.pasteHotkey3  || 'Alt+3');
+    set('capture-key-label', settings.captureHotkey || 'F8');
+    set('paste1-key-label',  settings.pasteHotkey1  || 'F9');
+    set('paste2-key-label',  settings.pasteHotkey2  || 'F10');
+    set('paste3-key-label',  settings.pasteHotkey3  || 'F11');
     const legend = document.getElementById('paste-legend');
     if (legend) legend.textContent =
-        `${settings.pasteHotkey1||'Alt+1'} HPI  \u00B7  ` +
-        `${settings.pasteHotkey2||'Alt+2'} Exam  \u00B7  ` +
-        `${settings.pasteHotkey3||'Alt+3'} A/P`;
+        `${settings.pasteHotkey1||'F9'} HPI  \u00B7  ` +
+        `${settings.pasteHotkey2||'F10'} Exam  \u00B7  ` +
+        `${settings.pasteHotkey3||'F11'} A/P`;
 }
 
 async function triggerCapture() {
