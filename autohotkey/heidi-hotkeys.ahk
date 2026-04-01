@@ -1,18 +1,12 @@
 ; MedicalNoteAttestor - Heidi Copy Script
 ; AutoHotkey v2 — launched by Electron app on startup
 
-; ── Slot storage ──────────────────────────────────────────────────────────────
-
 global slotHPI := ""
 global slotAP  := ""
 global examDotPhrase := ""
 
-; ── Header definitions ────────────────────────────────────────────────────────
-
 global HPI_HEADERS := ["Interval history, HPI:", "History of Present Illness (HPI):"]
 global AP_HEADERS  := ["Assessment and Plan:", "Assessment and plan:", "Assessment & Plan:", "Assessment/Plan:", "A&P:", "A/P:"]
-
-; ── Helper functions ──────────────────────────────────────────────────────────
 
 CleanText(text) {
     while RegExMatch(text, "\*\*(.+?)\*\*", &match) {
@@ -70,21 +64,36 @@ PasteText(text) {
     Send "^v"
 }
 
-; Load exam dot phrase from config file next to the exe
-; Electron writes this file when the user saves their exam dot phrase
+JsonEscape(text) {
+    text := StrReplace(text, "\", "\\")
+    text := StrReplace(text, '"', '\"')
+    text := StrReplace(text, "`r`n", "\n")
+    text := StrReplace(text, "`n", "\n")
+    text := StrReplace(text, "`r", "\n")
+    return text
+}
+
+WriteSlots() {
+    global slotHPI, slotAP
+    slotsPath := A_ScriptDir "\heidi-slots.json"
+    ts := A_TickCount
+    json := '{"hpi":"' . JsonEscape(slotHPI) . '","ap":"' . JsonEscape(slotAP) . '","timestamp":' . ts . '}'
+    try {
+        FileDelete slotsPath
+        FileAppend json, slotsPath, "UTF-8"
+    }
+}
+
 LoadConfig() {
     global examDotPhrase
     configPath := A_ScriptDir "\heidi-config.ini"
     if FileExist(configPath) {
         examDotPhrase := IniRead(configPath, "Heidi", "ExamDotPhrase", "")
-        ; Convert \n literal to real newlines
         examDotPhrase := StrReplace(examDotPhrase, "\n", "`n")
     }
 }
 
 LoadConfig()
-
-; ── Legacy hotkeys ────────────────────────────────────────────────────────────
 
 PgUp:: {
     A_Clipboard := ""
@@ -104,11 +113,8 @@ PgDn:: {
         A_Clipboard := extracted
 }
 
-; ── F8 — Capture both slots ───────────────────────────────────────────────────
-
 F8:: {
     global slotHPI, slotAP
-    ; Reload config in case exam phrase was updated
     LoadConfig()
     A_Clipboard := ""
     Send "^a^c"
@@ -121,6 +127,7 @@ F8:: {
     slotHPI := ExtractHPI(text)
     slotAP  := ExtractAP(text)
     A_Clipboard := text
+    WriteSlots()
     if (slotHPI != "" && slotAP != "") {
         SoundBeep 880, 80
         Sleep 60
@@ -132,39 +139,22 @@ F8:: {
     }
 }
 
-; ── F9 — Paste HPI ────────────────────────────────────────────────────────────
-
 F9:: {
     global slotHPI
-    if (slotHPI = "") {
-        SoundBeep 300, 200
-        return
-    }
+    if (slotHPI = "") { SoundBeep 300, 200 ; return }
     PasteText(slotHPI)
 }
 
-; ── F10 — Paste Exam dot phrase ───────────────────────────────────────────────
-
 F10:: {
     global examDotPhrase
-    if (examDotPhrase = "") {
-        SoundBeep 300, 200
-        return
-    }
+    if (examDotPhrase = "") { SoundBeep 300, 200 ; return }
     PasteText(examDotPhrase)
 }
 
-; ── F11 — Paste A&P ───────────────────────────────────────────────────────────
-
 F11:: {
     global slotAP
-    if (slotAP = "") {
-        SoundBeep 300, 200
-        return
-    }
+    if (slotAP = "") { SoundBeep 300, 200 ; return }
     PasteText(slotAP)
 }
-
-; ── F7 — Exit ─────────────────────────────────────────────────────────────────
 
 F7::ExitApp

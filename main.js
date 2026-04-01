@@ -33,12 +33,59 @@ function killAHK() {
     if (ahkProcess) { try { ahkProcess.kill(); } catch (e) {} ahkProcess = null; }
 }
 
+function getSlotsFilePath() {
+    const { config } = getAhkPaths();
+    return path.join(path.dirname(config), 'heidi-slots.json');
+}
+
 function writeAhkConfig(examDotPhrase) {
     if (process.platform !== 'win32') return;
     const { config } = getAhkPaths();
     const encoded = (examDotPhrase || '').replace(/\n/g, '\\n').replace(/\r/g, '');
     const ini = `[Heidi]\nExamDotPhrase=${encoded}\n`;
     try { fs.writeFileSync(config, ini, 'utf-8'); } catch (e) { console.error('Failed to write AHK config:', e.message); }
+}
+
+let slotsWatcher = null;
+
+function watchSlotsFile() {
+    const slotsPath = getSlotsFilePath();
+    readSlotsFile();
+    try {
+        slotsWatcher = fs.watch(path.dirname(slotsPath), (eventType, filename) => {
+            if (filename === 'heidi-slots.json') {
+                setTimeout(() => readSlotsFile(), 150);
+            }
+        });
+    } catch (e) {
+        console.error('Failed to watch slots file:', e.message);
+    }
+}
+
+function readSlotsFile() {
+    const slotsPath = getSlotsFilePath();
+    try {
+        if (!fs.existsSync(slotsPath)) return;
+        const raw = fs.readFileSync(slotsPath, 'utf-8');
+        const data = JSON.parse(raw);
+        if (data.hpi !== undefined) slots.hpi = data.hpi || null;
+        if (data.ap  !== undefined) slots.ap  = data.ap  || null;
+        const exam = getExamSlot();
+        if (mainWindow) {
+            mainWindow.webContents.send('capture-result', {
+                success: true,
+                hpiLoaded: !!slots.hpi,
+                apLoaded: !!slots.ap,
+                examLoaded: !!exam,
+                hpiPreview: slots.hpi ? slots.hpi.substring(0, 80) : null,
+                apPreview: slots.ap ? slots.ap.substring(0, 80) : null,
+                examPreview: exam ? exam.substring(0, 80) : null,
+                bulletsLoading: false
+            });
+        }
+    } catch (e) {
+        console.error('Failed to read slots file:', e.message);
+    }
 }
 
 // Portable config
@@ -186,6 +233,20 @@ function createMainWindow() {
     });
 
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
+
+    mainWindow.webContents.on('did-finish-load', () => {
+        const exam = getExamSlot();
+        mainWindow.webContents.send('capture-result', {
+            success: true,
+            hpiLoaded: !!slots.hpi,
+            apLoaded: !!slots.ap,
+            examLoaded: !!exam,
+            hpiPreview: slots.hpi ? slots.hpi.substring(0, 80) : null,
+            apPreview: slots.ap ? slots.ap.substring(0, 80) : null,
+            examPreview: exam ? exam.substring(0, 80) : null,
+            bulletsLoading: false
+        });
+    });
 
     mainWindow.on('resize', () => {
         const { width, height } = mainWindow.getBounds();
@@ -610,6 +671,19 @@ ipcMain.handle('save-settings', (e, settings) => {
     store.set('customAttestationTemplate',settings.customAttestationTemplate);
     writeAhkConfig(settings.examDotPhrase || '');
     registerHotkeys();
+    const exam = getExamSlot();
+    if (mainWindow) {
+        mainWindow.webContents.send('capture-result', {
+            success: true,
+            hpiLoaded: !!slots.hpi,
+            apLoaded: !!slots.ap,
+            examLoaded: !!exam,
+            hpiPreview: slots.hpi ? slots.hpi.substring(0, 80) : null,
+            apPreview: slots.ap ? slots.ap.substring(0, 80) : null,
+            examPreview: exam ? exam.substring(0, 80) : null,
+            bulletsLoading: false
+        });
+    }
     return true;
 });
 
@@ -836,6 +910,7 @@ app.whenReady().then(() => {
         if (process.platform === 'win32') {
             writeAhkConfig(store.get('examDotPhrase') || '');
             launchAHK();
+            watchSlotsFile();
         }
     } catch (err) {
         const { dialog } = require('electron');
@@ -862,4 +937,4 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => { globalShortcut.unregisterAll(); killAHK(); app.quit(); });
 
-app.on('will-quit', () => { globalShortcut.unregisterAll(); killAHK(); });
+app.on('will-quit', () => { globalShortcut.unregisterAll(); killAHK(); if (slotsWatcher) { try { slotsWatcher.close(); } catch(e) {} } });
