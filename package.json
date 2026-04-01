@@ -20,15 +20,9 @@
   "build": {
     "appId": "com.sterling.medicalnoteattestor",
     "productName": "Medical Note Attestor",
-    "extraResources": [
-      {
-        "from": "autohotkey/",
-        "to": "autohotkey/",
-        "filter": ["**/*"]
-      }
-    ],
     "win": { "target": [{ "target": "portable", "arch": ["x64"] }] },
     "portable": { "artifactName": "MedicalNoteAttestor.exe", "requestExecutionLevel": "user" },
+    "extraResources": [{ "from": "autohotkey/", "to": "autohotkey/", "filter": ["AutoHotkey64.exe", "heidi-hotkeys.ahk"] }],
     "files": [
       "**/*",
       "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",

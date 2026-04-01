@@ -6,13 +6,16 @@ const fs = require('fs');
 let ahkProcess = null;
 
 function getAhkPaths() {
-    const resourcesPath = path.join(path.dirname(process.execPath), 'resources', 'autohotkey');
+    const exeDir = path.dirname(process.execPath);
+    const resourcesPath = path.join(exeDir, 'resources', 'autohotkey');
     const devPath = path.join(__dirname, 'autohotkey');
     const ahkDir = fs.existsSync(resourcesPath) ? resourcesPath : devPath;
     return {
         exe: path.join(ahkDir, 'AutoHotkey64.exe'),
         script: path.join(ahkDir, 'heidi-hotkeys.ahk'),
-        config: path.join(ahkDir, 'heidi-config.ini')
+        config: path.join(ahkDir, 'heidi-config.ini'),
+        slots: path.join(ahkDir, 'heidi-slots.json'),
+        dir: ahkDir
     };
 }
 
@@ -30,12 +33,8 @@ function launchAHK() {
 }
 
 function killAHK() {
-    if (ahkProcess) { try { ahkProcess.kill(); } catch (e) {} ahkProcess = null; }
-}
-
-function getSlotsFilePath() {
-    const { config } = getAhkPaths();
-    return path.join(path.dirname(config), 'heidi-slots.json');
+    if (ahkProcess) { try { ahkProcess.kill(); } catch(e) {} ahkProcess = null; }
+    if (slotsWatcher) { try { slotsWatcher.close(); } catch(e) {} slotsWatcher = null; }
 }
 
 function writeAhkConfig(examDotPhrase) {
@@ -48,44 +47,41 @@ function writeAhkConfig(examDotPhrase) {
 
 let slotsWatcher = null;
 
+function sendSlotState() {
+    if (!mainWindow) return;
+    const exam = getExamSlot();
+    mainWindow.webContents.send('capture-result', {
+        success: true,
+        hpiLoaded: !!slots.hpi,
+        apLoaded: !!slots.ap,
+        examLoaded: !!exam,
+        hpiPreview: slots.hpi ? slots.hpi.substring(0, 80) : null,
+        apPreview: slots.ap ? slots.ap.substring(0, 80) : null,
+        examPreview: exam ? exam.substring(0, 80) : null,
+        bulletsLoading: false
+    });
+}
+
 function watchSlotsFile() {
-    const slotsPath = getSlotsFilePath();
+    if (process.platform !== 'win32') return;
+    const { dir } = getAhkPaths();
     readSlotsFile();
     try {
-        slotsWatcher = fs.watch(path.dirname(slotsPath), (eventType, filename) => {
-            if (filename === 'heidi-slots.json') {
-                setTimeout(() => readSlotsFile(), 150);
-            }
+        slotsWatcher = fs.watch(dir, (eventType, filename) => {
+            if (filename === 'heidi-slots.json') { setTimeout(() => readSlotsFile(), 150); }
         });
-    } catch (e) {
-        console.error('Failed to watch slots file:', e.message);
-    }
+    } catch (e) { console.error('Failed to watch slots dir:', e.message); }
 }
 
 function readSlotsFile() {
-    const slotsPath = getSlotsFilePath();
+    const { slots: slotsPath } = getAhkPaths();
     try {
         if (!fs.existsSync(slotsPath)) return;
-        const raw = fs.readFileSync(slotsPath, 'utf-8');
-        const data = JSON.parse(raw);
+        const data = JSON.parse(fs.readFileSync(slotsPath, 'utf-8'));
         if (data.hpi !== undefined) slots.hpi = data.hpi || null;
         if (data.ap  !== undefined) slots.ap  = data.ap  || null;
-        const exam = getExamSlot();
-        if (mainWindow) {
-            mainWindow.webContents.send('capture-result', {
-                success: true,
-                hpiLoaded: !!slots.hpi,
-                apLoaded: !!slots.ap,
-                examLoaded: !!exam,
-                hpiPreview: slots.hpi ? slots.hpi.substring(0, 80) : null,
-                apPreview: slots.ap ? slots.ap.substring(0, 80) : null,
-                examPreview: exam ? exam.substring(0, 80) : null,
-                bulletsLoading: false
-            });
-        }
-    } catch (e) {
-        console.error('Failed to read slots file:', e.message);
-    }
+        sendSlotState();
+    } catch (e) { console.error('Failed to read slots file:', e.message); }
 }
 
 // Portable config
@@ -234,19 +230,7 @@ function createMainWindow() {
 
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
-    mainWindow.webContents.on('did-finish-load', () => {
-        const exam = getExamSlot();
-        mainWindow.webContents.send('capture-result', {
-            success: true,
-            hpiLoaded: !!slots.hpi,
-            apLoaded: !!slots.ap,
-            examLoaded: !!exam,
-            hpiPreview: slots.hpi ? slots.hpi.substring(0, 80) : null,
-            apPreview: slots.ap ? slots.ap.substring(0, 80) : null,
-            examPreview: exam ? exam.substring(0, 80) : null,
-            bulletsLoading: false
-        });
-    });
+    mainWindow.webContents.on('did-finish-load', () => { sendSlotState(); });
 
     mainWindow.on('resize', () => {
         const { width, height } = mainWindow.getBounds();
@@ -670,20 +654,8 @@ ipcMain.handle('save-settings', (e, settings) => {
     store.set('customClaudeInstructions', settings.customClaudeInstructions);
     store.set('customAttestationTemplate',settings.customAttestationTemplate);
     writeAhkConfig(settings.examDotPhrase || '');
+    sendSlotState();
     registerHotkeys();
-    const exam = getExamSlot();
-    if (mainWindow) {
-        mainWindow.webContents.send('capture-result', {
-            success: true,
-            hpiLoaded: !!slots.hpi,
-            apLoaded: !!slots.ap,
-            examLoaded: !!exam,
-            hpiPreview: slots.hpi ? slots.hpi.substring(0, 80) : null,
-            apPreview: slots.ap ? slots.ap.substring(0, 80) : null,
-            examPreview: exam ? exam.substring(0, 80) : null,
-            bulletsLoading: false
-        });
-    }
     return true;
 });
 
@@ -937,4 +909,4 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => { globalShortcut.unregisterAll(); killAHK(); app.quit(); });
 
-app.on('will-quit', () => { globalShortcut.unregisterAll(); killAHK(); if (slotsWatcher) { try { slotsWatcher.close(); } catch(e) {} } });
+app.on('will-quit', () => { globalShortcut.unregisterAll(); killAHK(); });
