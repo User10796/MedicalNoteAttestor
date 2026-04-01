@@ -388,6 +388,22 @@ function pasteSlot(slotName) {
     if (content && content.trim()) {
         clipboard.writeText(content);
         if (mainWindow) mainWindow.webContents.send('slot-pasted', slotName);
+
+        // Auto-paste into the active window (Citrix) via PowerShell SendKeys
+        setTimeout(() => {
+            try {
+                const psScript = [
+                    'Add-Type -AssemblyName System.Windows.Forms;',
+                    'Start-Sleep -Milliseconds 80;',
+                    '[System.Windows.Forms.SendKeys]::SendWait("^v");'
+                ].join(' ');
+                execSync(`powershell -NoProfile -Command "${psScript}"`,
+                    { timeout: 3000 });
+            } catch (e) {
+                console.error('pasteSlot: SendKeys Ctrl+V failed:', e.message);
+            }
+        }, 100);
+
     } else {
         if (mainWindow) mainWindow.webContents.send('slot-empty', slotName);
     }
