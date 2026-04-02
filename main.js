@@ -9,13 +9,18 @@ function getAhkPaths() {
     const exeDir = path.dirname(process.execPath);
     const resourcesPath = path.join(exeDir, 'resources', 'autohotkey');
     const devPath = path.join(__dirname, 'autohotkey');
-    const ahkDir = fs.existsSync(resourcesPath) ? resourcesPath : devPath;
+    const ahkBinDir = fs.existsSync(resourcesPath) ? resourcesPath : devPath;
+
+    const runtimeDir = process.env.PORTABLE_EXECUTABLE_DIR
+        || path.dirname(process.execPath)
+        || devPath;
+
     return {
-        exe: path.join(ahkDir, 'AutoHotkey64.exe'),
-        script: path.join(ahkDir, 'heidi-hotkeys.ahk'),
-        config: path.join(ahkDir, 'heidi-config.ini'),
-        slots: path.join(ahkDir, 'heidi-slots.json'),
-        dir: ahkDir
+        exe:    path.join(ahkBinDir, 'AutoHotkey64.exe'),
+        script: path.join(ahkBinDir, 'heidi-hotkeys.ahk'),
+        config: path.join(runtimeDir, 'heidi-config.ini'),
+        slots:  path.join(runtimeDir, 'heidi-slots.json'),
+        dir:    runtimeDir
     };
 }
 
@@ -219,7 +224,7 @@ function createMainWindow() {
         width: bounds.width,
         height: bounds.height,
         minWidth: 180,
-        minHeight: 120,
+        minHeight: 36,
         alwaysOnTop: true,
         webPreferences: {
             nodeIntegration: false,
@@ -229,6 +234,7 @@ function createMainWindow() {
     });
 
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
+    mainWindow.setMenu(null);
 
     mainWindow.webContents.on('did-finish-load', () => { sendSlotState(); });
 
@@ -411,19 +417,19 @@ async function performCapture() {
     try {
         const psScript = [
             'Add-Type -AssemblyName System.Windows.Forms;',
-            'Start-Sleep -Milliseconds 100;',
+            'Start-Sleep -Milliseconds 50;',
             '[System.Windows.Forms.SendKeys]::SendWait("^a");',
-            'Start-Sleep -Milliseconds 150;',
+            'Start-Sleep -Milliseconds 80;',
             '[System.Windows.Forms.SendKeys]::SendWait("^c");',
-            'Start-Sleep -Milliseconds 200;'
+            'Start-Sleep -Milliseconds 80;'
         ].join(' ');
-        execSync(`powershell -NoProfile -Command "${psScript}"`, { timeout: 4000 });
+        execSync(`powershell -NoProfile -Command "${psScript}"`, { timeout: 3000 });
     } catch (e) {
         console.error('performCapture: SendKeys failed:', e.message);
     }
 
     // Step 2: Wait for clipboard to settle
-    await new Promise(r => setTimeout(r, 250));
+    await new Promise(r => setTimeout(r, 150));
 
     // Step 3: Read and parse clipboard
     const text = clipboard.readText();
@@ -686,6 +692,32 @@ ipcMain.handle('get-slot-state', () => ({
     examPreview: getExamSlot()  ? getExamSlot().substring(0, 80)  : null
 }));
 
+ipcMain.handle('set-window-collapsed', (event, collapsed) => {
+    if (!mainWindow) return;
+    const COLLAPSED_HEIGHT = 36;
+    const currentBounds = mainWindow.getBounds();
+
+    if (collapsed) {
+        store.set('expandedHeight', currentBounds.height);
+        mainWindow.setMinimumSize(180, COLLAPSED_HEIGHT);
+        mainWindow.setBounds({
+            ...currentBounds,
+            height: COLLAPSED_HEIGHT
+        }, true);
+        mainWindow.setResizable(false);
+    } else {
+        const expandedHeight = store.get('expandedHeight', 500);
+        mainWindow.setMinimumSize(180, 120);
+        mainWindow.setResizable(true);
+        mainWindow.setBounds({
+            ...currentBounds,
+            height: expandedHeight
+        }, true);
+    }
+    return true;
+});
+
+ipcMain.handle('open-settings', () => { openSettings(); return true; });
 ipcMain.handle('trigger-capture', async () => { await performCapture(); return true; });
 ipcMain.handle('paste-slot', (e, name) => { pasteSlot(name); return true; });
 ipcMain.handle('clear-slots', () => { slots.hpi = null; slots.ap = null; return true; });
@@ -695,7 +727,7 @@ ipcMain.handle('save-exam-dot-phrase', (e, text) => {
 
 // ── Claude API ──────────────────────────────────────────────────────────────
 
-const BUILT_IN_API_KEY = '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';
+const BUILT_IN_API_KEY = ''; // Removed — set your key in Settings → Claude API
 
 const BASE_SYSTEM_PROMPT = `You are a medical note reformatter. Transform the input according to these rules:
 
@@ -785,6 +817,16 @@ FORMAT:
 
 async function extractActionItems(apText) {
     const apiKey = (store.get('claudeApiKey') || '').trim() || BUILT_IN_API_KEY;
+
+    if (!apiKey || apiKey === '') {
+        console.error('extractActionItems: No API key available');
+        if (mainWindow) mainWindow.webContents.send('bullets-ready', {
+            apPreview: null,
+            error: 'No API key — go to Settings → Claude API to enter your key'
+        });
+        return null;
+    }
+
     try {
         const response = await net.fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
@@ -801,7 +843,10 @@ async function extractActionItems(apText) {
             })
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error?.message || `HTTP ${response.status}`);
+        if (!response.ok) {
+            console.error('extractActionItems API error:', data.error?.message || response.status);
+            throw new Error(data.error?.message || `HTTP ${response.status}`);
+        }
         return (data.content[0].text || '').trim();
     } catch (e) {
         console.error('Action item extraction failed:', e.message);

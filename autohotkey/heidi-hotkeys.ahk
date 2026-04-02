@@ -156,9 +156,17 @@ JsonEscape(text) {
     return text
 }
 
+GetRuntimeDir() {
+    exeDir := EnvGet("PORTABLE_EXECUTABLE_DIR")
+    if (exeDir != "")
+        return exeDir
+    return A_ScriptDir "\..\..\"
+}
+
 WriteSlots() {
     global slotHPI, slotAP
-    slotsPath := A_ScriptDir "\heidi-slots.json"
+    runtimeDir := GetRuntimeDir()
+    slotsPath := runtimeDir "\heidi-slots.json"
     ts := A_TickCount
     json := '{"hpi":"' . JsonEscape(slotHPI) . '","ap":"' . JsonEscape(slotAP) . '","timestamp":' . ts . '}'
     try {
@@ -169,7 +177,8 @@ WriteSlots() {
 
 LoadConfig() {
     global examDotPhrase
-    configPath := A_ScriptDir "\heidi-config.ini"
+    runtimeDir := GetRuntimeDir()
+    configPath := runtimeDir "\heidi-config.ini"
     if FileExist(configPath) {
         examDotPhrase := IniRead(configPath, "Heidi", "ExamDotPhrase", "")
         examDotPhrase := StrReplace(examDotPhrase, "\n", "`n")
