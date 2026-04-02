@@ -374,3 +374,24 @@ window.electronAPI.onSlotEmpty((slotName) => {
     const labels = { hpi: 'HPI', exam: 'Exam', ap: 'A/P' };
     setHeidiStatus(`\u26A0\uFE0F ${labels[slotName]||slotName} slot is empty`, 'error');
 });
+
+// ── Collapse/Expand ───────────────────────────────────────────────────────────
+
+const collapseBtn = document.getElementById('collapse-btn');
+const collapsibleContent = document.getElementById('collapsible-content');
+let isCollapsed = false;
+
+collapseBtn.addEventListener('click', () => {
+    isCollapsed = !isCollapsed;
+    if (isCollapsed) {
+        collapsibleContent.classList.add('collapsed');
+        collapseBtn.textContent = '▼';
+        collapseBtn.title = 'Expand';
+        window.electronAPI.setWindowCollapsed(true);
+    } else {
+        collapsibleContent.classList.remove('collapsed');
+        collapseBtn.textContent = '▲';
+        collapseBtn.title = 'Collapse';
+        window.electronAPI.setWindowCollapsed(false);
+    }
+});

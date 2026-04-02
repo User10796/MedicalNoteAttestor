@@ -1,7 +1,88 @@
 const { app, BrowserWindow, globalShortcut, clipboard, ipcMain, Menu, net, desktopCapturer, screen } = require('electron');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+
+let ahkProcess = null;
+
+function getAhkPaths() {
+    const exeDir = path.dirname(process.execPath);
+    const resourcesPath = path.join(exeDir, 'resources', 'autohotkey');
+    const devPath = path.join(__dirname, 'autohotkey');
+    const ahkDir = fs.existsSync(resourcesPath) ? resourcesPath : devPath;
+    return {
+        exe: path.join(ahkDir, 'AutoHotkey64.exe'),
+        script: path.join(ahkDir, 'heidi-hotkeys.ahk'),
+        config: path.join(ahkDir, 'heidi-config.ini'),
+        slots: path.join(ahkDir, 'heidi-slots.json'),
+        dir: ahkDir
+    };
+}
+
+function launchAHK() {
+    if (process.platform !== 'win32') return;
+    const { exe, script } = getAhkPaths();
+    if (!fs.existsSync(exe)) { console.error('AutoHotkey64.exe not found at:', exe); return; }
+    if (!fs.existsSync(script)) { console.error('heidi-hotkeys.ahk not found at:', script); return; }
+    try {
+        ahkProcess = spawn(exe, [script], { detached: false, stdio: 'ignore', windowsHide: true });
+        ahkProcess.on('error', (e) => console.error('AHK launch error:', e.message));
+        ahkProcess.on('exit', (code) => { console.log('AHK exited with code:', code); ahkProcess = null; });
+        console.log('AutoHotkey launched, PID:', ahkProcess.pid);
+    } catch (e) { console.error('Failed to launch AHK:', e.message); }
+}
+
+function killAHK() {
+    if (ahkProcess) { try { ahkProcess.kill(); } catch(e) {} ahkProcess = null; }
+    if (slotsWatcher) { try { slotsWatcher.close(); } catch(e) {} slotsWatcher = null; }
+}
+
+function writeAhkConfig(examDotPhrase) {
+    if (process.platform !== 'win32') return;
+    const { config } = getAhkPaths();
+    const encoded = (examDotPhrase || '').replace(/\n/g, '\\n').replace(/\r/g, '');
+    const ini = `[Heidi]\nExamDotPhrase=${encoded}\n`;
+    try { fs.writeFileSync(config, ini, 'utf-8'); } catch (e) { console.error('Failed to write AHK config:', e.message); }
+}
+
+let slotsWatcher = null;
+
+function sendSlotState() {
+    if (!mainWindow) return;
+    const exam = getExamSlot();
+    mainWindow.webContents.send('capture-result', {
+        success: true,
+        hpiLoaded: !!slots.hpi,
+        apLoaded: !!slots.ap,
+        examLoaded: !!exam,
+        hpiPreview: slots.hpi ? slots.hpi.substring(0, 80) : null,
+        apPreview: slots.ap ? slots.ap.substring(0, 80) : null,
+        examPreview: exam ? exam.substring(0, 80) : null,
+        bulletsLoading: false
+    });
+}
+
+function watchSlotsFile() {
+    if (process.platform !== 'win32') return;
+    const { dir } = getAhkPaths();
+    readSlotsFile();
+    try {
+        slotsWatcher = fs.watch(dir, (eventType, filename) => {
+            if (filename === 'heidi-slots.json') { setTimeout(() => readSlotsFile(), 150); }
+        });
+    } catch (e) { console.error('Failed to watch slots dir:', e.message); }
+}
+
+function readSlotsFile() {
+    const { slots: slotsPath } = getAhkPaths();
+    try {
+        if (!fs.existsSync(slotsPath)) return;
+        const data = JSON.parse(fs.readFileSync(slotsPath, 'utf-8'));
+        if (data.hpi !== undefined) slots.hpi = data.hpi || null;
+        if (data.ap  !== undefined) slots.ap  = data.ap  || null;
+        sendSlotState();
+    } catch (e) { console.error('Failed to read slots file:', e.message); }
+}
 
 // Portable config
 const DEFAULTS = {
@@ -149,6 +230,8 @@ function createMainWindow() {
 
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
+    mainWindow.webContents.on('did-finish-load', () => { sendSlotState(); });
+
     mainWindow.on('resize', () => {
         const { width, height } = mainWindow.getBounds();
         store.set('windowBounds', { width, height });
@@ -234,15 +317,15 @@ function registerHotkeys() {
             }
         };
 
-        // Legacy single-section hotkeys (kept for backwards compat)
+        if (process.platform !== 'win32') {
+            tryRegister(captureKey, () => { performCapture().catch(e => console.error(e)); });
+            tryRegister(paste1Key,  () => pasteSlot('hpi'));
+            tryRegister(paste2Key,  () => pasteSlot('exam'));
+            tryRegister(paste3Key,  () => pasteSlot('ap'));
+        }
+        // Legacy single-section hotkeys — keep on all platforms as fallback
         tryRegister(hpiKey, () => extractAndCopySection('hpi'));
         tryRegister(apKey,  () => extractAndCopySection('ap'));
-
-        // New capture + paste hotkeys
-        tryRegister(captureKey, () => { performCapture().catch(e => console.error('Capture error:', e)); });
-        tryRegister(paste1Key,  () => pasteSlot('hpi'));
-        tryRegister(paste2Key,  () => pasteSlot('exam'));
-        tryRegister(paste3Key,  () => pasteSlot('ap'));
 
     } catch (err) {
         console.error('registerHotkeys failed:', err.message);
@@ -328,19 +411,19 @@ async function performCapture() {
     try {
         const psScript = [
             'Add-Type -AssemblyName System.Windows.Forms;',
-            'Start-Sleep -Milliseconds 100;',
+            'Start-Sleep -Milliseconds 50;',
             '[System.Windows.Forms.SendKeys]::SendWait("^a");',
-            'Start-Sleep -Milliseconds 150;',
+            'Start-Sleep -Milliseconds 80;',
             '[System.Windows.Forms.SendKeys]::SendWait("^c");',
-            'Start-Sleep -Milliseconds 200;'
+            'Start-Sleep -Milliseconds 80;'
         ].join(' ');
-        execSync(`powershell -NoProfile -Command "${psScript}"`, { timeout: 4000 });
+        execSync(`powershell -NoProfile -Command "${psScript}"`, { timeout: 3000 });
     } catch (e) {
         console.error('performCapture: SendKeys failed:', e.message);
     }
 
     // Step 2: Wait for clipboard to settle
-    await new Promise(r => setTimeout(r, 250));
+    await new Promise(r => setTimeout(r, 150));
 
     // Step 3: Read and parse clipboard
     const text = clipboard.readText();
@@ -570,6 +653,8 @@ ipcMain.handle('save-settings', (e, settings) => {
     store.set('claudeApiKey',             settings.claudeApiKey);
     store.set('customClaudeInstructions', settings.customClaudeInstructions);
     store.set('customAttestationTemplate',settings.customAttestationTemplate);
+    writeAhkConfig(settings.examDotPhrase || '');
+    sendSlotState();
     registerHotkeys();
     return true;
 });
@@ -600,6 +685,36 @@ ipcMain.handle('get-slot-state', () => ({
     apPreview:   slots.ap       ? slots.ap.substring(0, 80)       : null,
     examPreview: getExamSlot()  ? getExamSlot().substring(0, 80)  : null
 }));
+
+ipcMain.handle('set-window-collapsed', (event, collapsed) => {
+    if (!mainWindow) return;
+
+    const currentBounds = mainWindow.getBounds();
+    const COLLAPSED_HEIGHT = 36;
+
+    if (collapsed) {
+        store.set('expandedHeight', currentBounds.height);
+        const newBounds = {
+            ...currentBounds,
+            height: COLLAPSED_HEIGHT,
+            y: currentBounds.y
+        };
+        mainWindow.setMinimumSize(180, COLLAPSED_HEIGHT);
+        mainWindow.setBounds(newBounds, true);
+        mainWindow.setResizable(false);
+    } else {
+        const expandedHeight = store.get('expandedHeight', 500);
+        const newBounds = {
+            ...currentBounds,
+            height: expandedHeight,
+            y: currentBounds.y
+        };
+        mainWindow.setMinimumSize(180, 120);
+        mainWindow.setResizable(true);
+        mainWindow.setBounds(newBounds, true);
+    }
+    return true;
+});
 
 ipcMain.handle('trigger-capture', async () => { await performCapture(); return true; });
 ipcMain.handle('paste-slot', (e, name) => { pasteSlot(name); return true; });
@@ -794,6 +909,11 @@ app.whenReady().then(() => {
     try {
         createMainWindow();
         registerHotkeys();
+        if (process.platform === 'win32') {
+            writeAhkConfig(store.get('examDotPhrase') || '');
+            launchAHK();
+            watchSlotsFile();
+        }
     } catch (err) {
         const { dialog } = require('electron');
         dialog.showErrorBox(
@@ -817,11 +937,6 @@ app.whenReady().then(() => {
     app.quit();
 });
 
-app.on('window-all-closed', () => {
-    globalShortcut.unregisterAll();
-    app.quit();
-});
+app.on('window-all-closed', () => { globalShortcut.unregisterAll(); killAHK(); app.quit(); });
 
-app.on('will-quit', () => {
-    globalShortcut.unregisterAll();
-});
+app.on('will-quit', () => { globalShortcut.unregisterAll(); killAHK(); });

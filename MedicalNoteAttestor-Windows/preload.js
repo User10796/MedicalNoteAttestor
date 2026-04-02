@@ -17,5 +17,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onCaptureResult:     (cb) => ipcRenderer.on('capture-result', (e, d) => cb(d)),
     onSlotPasted:        (cb) => ipcRenderer.on('slot-pasted', (e, n) => cb(n)),
     onSlotEmpty:         (cb) => ipcRenderer.on('slot-empty', (e, n) => cb(n)),
-    onBulletsReady:      (cb) => ipcRenderer.on('bullets-ready', (e, d) => cb(d))
+    onBulletsReady:      (cb) => ipcRenderer.on('bullets-ready', (e, d) => cb(d)),
+    setWindowCollapsed:  (collapsed) => ipcRenderer.invoke('set-window-collapsed', collapsed)
 });
