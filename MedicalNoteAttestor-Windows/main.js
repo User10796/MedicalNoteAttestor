@@ -173,7 +173,8 @@ let overlayWindow;
 // Heidi section headers
 const HPI_HEADERS = [
     'Interval history, HPI:',
-    'History of Present Illness (HPI):'
+    'History of Present Illness (HPI):',
+    'History of Present Illness:'
 ];
 const AP_HEADERS = [
     'Assessment and plan:',

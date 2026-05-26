@@ -7,7 +7,7 @@
 global slotHPI := ""
 global slotAP  := ""
 global examDotPhrase := ""
-global HPI_HEADERS := ["Interval history, HPI:", "History of Present Illness (HPI):"]
+global HPI_HEADERS := ["Interval history, HPI:", "History of Present Illness (HPI):", "History of Present Illness:"]
 global AP_HEADERS  := ["Assessment and Plan:", "Assessment and plan:", "Assessment & Plan:", "Assessment/Plan:", "A&P:", "A/P:"]
 
 ; ── Load config on startup ────────────────────────────────────────────────────
