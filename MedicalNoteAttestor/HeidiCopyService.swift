@@ -15,12 +15,37 @@ class HeidiCopyService {
     // HPI headers (established vs new patient)
     private let hpiHeaders = [
         "Interval history, HPI:",
-        "History of Present Illness (HPI):",
-        "History of Present Illness:"
+        "History of Present Illness (HPI):"
     ]
 
     // A&P header
     private let apHeader = "Assessment and Plan:"
+
+    func captureFullNote(completion: @escaping (String?) -> Void) {
+        logger.info("captureFullNote: triggering Cmd+A, Cmd+C")
+        simulateSelectAllAndCopy()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            let pasteboard = NSPasteboard.general
+            let text = pasteboard.string(forType: .string)
+            completion(text)
+        }
+    }
+
+    /// Performs ONE Cmd+A + Cmd+C on the frontmost app and returns the full
+    /// clipboard text after a delay. Does not modify the clipboard afterward.
+    func copyFullDocument(delay: Double) async -> String? {
+        simulateSelectAllAndCopy()
+        try? await Task.sleep(nanoseconds: UInt64((delay + 0.35) * 1_000_000_000))
+        return NSPasteboard.general.string(forType: .string)
+    }
+
+    /// Public parse entry points operating on already-captured text.
+    func parseHPI(from text: String) -> String? { extractHPI(from: text) }
+    func parseAP(from text: String)  -> String? { extractAssessmentPlan(from: text) }
+
+    func parseAssessmentPlan(from text: String) -> String? {
+        return extractAssessmentPlan(from: text)
+    }
 
     /// Extract a section from clipboard text and put it back on clipboard
     func extractAndCopySection(_ section: HeidiSection) {
@@ -109,7 +134,7 @@ class HeidiCopyService {
         }
     }
 
-    private func extractHPI(from text: String) -> String? {
+    func extractHPI(from text: String) -> String? {
         // Find HPI start position (case-insensitive)
         var hpiStart: String.Index?
         var usedHeader: String?
@@ -140,7 +165,7 @@ class HeidiCopyService {
         return extracted
     }
 
-    private func extractAssessmentPlan(from text: String) -> String? {
+    func extractAssessmentPlan(from text: String) -> String? {
         // Find A&P start position (case-insensitive)
         guard let apRange = text.range(of: apHeader, options: .caseInsensitive) else { return nil }
         let start = apRange.upperBound
