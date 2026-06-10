@@ -1,0 +1,58 @@
+name: Build Windows App
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Verify AHK source resources exist
+        shell: bash
+        run: |
+          test -f autohotkey/AutoHotkey64.exe || { echo "FATAL: autohotkey/AutoHotkey64.exe missing from repo"; exit 1; }
+          test -f autohotkey/heidi-hotkeys.ahk || { echo "FATAL: autohotkey/heidi-hotkeys.ahk missing from repo"; exit 1; }
+          grep -q "History of Present Illness:" autohotkey/heidi-hotkeys.ahk || { echo "FATAL: bare HPI header missing from AHK script"; exit 1; }
+          grep -q "UTF-8-RAW" autohotkey/heidi-hotkeys.ahk || { echo "FATAL: AHK script not using UTF-8-RAW (BOM will break slot file)"; exit 1; }
+
+      - name: Build portable exe (unpacked dir first, for verification)
+        run: npm run build-dir
+
+      - name: Verify bundled AHK resources in build output
+        shell: bash
+        run: |
+          UNPACKED="dist/win-unpacked"
+          test -f "$UNPACKED/resources/autohotkey/AutoHotkey64.exe" || { echo "FATAL: AutoHotkey64.exe NOT bundled in build output"; exit 1; }
+          test -f "$UNPACKED/resources/autohotkey/heidi-hotkeys.ahk" || { echo "FATAL: heidi-hotkeys.ahk NOT bundled in build output"; exit 1; }
+          test -f "$UNPACKED/resources/app.asar" || { echo "FATAL: app.asar missing from build output"; exit 1; }
+          echo "Bundled resource verification PASSED"
+
+      - name: Build final portable exe
+        run: npx electron-builder --win portable
+
+      - name: Verify portable exe exists
+        shell: bash
+        run: |
+          test -f "dist/MedicalNoteAttestor.exe" || { echo "FATAL: dist/MedicalNoteAttestor.exe not produced"; exit 1; }
+          ls -la dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MedicalNoteAttestor-Windows
+          path: dist/MedicalNoteAttestor.exe
+          retention-days: 90

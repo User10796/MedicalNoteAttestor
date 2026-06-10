@@ -82,7 +82,8 @@ function readSlotsFile() {
     const { slots: slotsPath } = getAhkPaths();
     try {
         if (!fs.existsSync(slotsPath)) return;
-        const data = JSON.parse(fs.readFileSync(slotsPath, 'utf-8'));
+        const raw = fs.readFileSync(slotsPath, 'utf-8').replace(/^\uFEFF/, '');
+        const data = JSON.parse(raw);
         if (data.hpi !== undefined) slots.hpi = data.hpi || null;
         if (data.ap  !== undefined) slots.ap  = data.ap  || null;
         sendSlotState();
@@ -178,7 +179,8 @@ let overlayWindow;
 // Heidi section headers
 const HPI_HEADERS = [
     'Interval history, HPI:',
-    'History of Present Illness (HPI):'
+    'History of Present Illness (HPI):',
+    'History of Present Illness:'
 ];
 const AP_HEADERS = [
     'Assessment and plan:',
@@ -694,15 +696,21 @@ ipcMain.handle('get-slot-state', () => ({
 
 ipcMain.handle('set-window-collapsed', (event, collapsed) => {
     if (!mainWindow) return;
-    const COLLAPSED_HEIGHT = 36;
+    const COLLAPSED_CONTENT_HEIGHT = 36;
+    // Native frame (OS title bar + borders) height — on Windows this is ~32px,
+    // so sizing the OUTER window to 36 hides the HTML title bar entirely.
+    const outerH = mainWindow.getSize()[1];
+    const contentH = mainWindow.getContentSize()[1];
+    const chrome = Math.max(0, outerH - contentH);
+    const collapsedOuterHeight = COLLAPSED_CONTENT_HEIGHT + chrome;
     const currentBounds = mainWindow.getBounds();
 
     if (collapsed) {
         store.set('expandedHeight', currentBounds.height);
-        mainWindow.setMinimumSize(180, COLLAPSED_HEIGHT);
+        mainWindow.setMinimumSize(180, collapsedOuterHeight);
         mainWindow.setBounds({
             ...currentBounds,
-            height: COLLAPSED_HEIGHT
+            height: collapsedOuterHeight
         }, true);
         mainWindow.setResizable(false);
     } else {

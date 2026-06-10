@@ -87,7 +87,6 @@ F11:: {
     PasteText(slotAP)
 }
 
-F7::ExitApp
 
 ; ── Functions — defined after hotkeys ─────────────────────────────────────────
 
@@ -171,7 +170,7 @@ WriteSlots() {
     json := '{"hpi":"' . JsonEscape(slotHPI) . '","ap":"' . JsonEscape(slotAP) . '","timestamp":' . ts . '}'
     try {
         FileDelete slotsPath
-        FileAppend json, slotsPath, "UTF-8"
+        FileAppend json, slotsPath, "UTF-8-RAW"
     }
 }
 
