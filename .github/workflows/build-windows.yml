@@ -39,7 +39,9 @@ jobs:
       - name: Verify bundled AHK resources in build output
         shell: bash
         run: |
-          UNPACKED="dist/win-unpacked"
+          UNPACKED="$(ls -d dist/win*-unpacked 2>/dev/null | head -1)"
+          test -n "$UNPACKED" || { echo "FATAL: no dist/win*-unpacked dir produced"; exit 1; }
+          echo "Using unpacked dir: $UNPACKED"
           test -f "$UNPACKED/resources/autohotkey/AutoHotkey64.exe" || { echo "FATAL: AutoHotkey64.exe NOT bundled in build output"; exit 1; }
           test -f "$UNPACKED/resources/autohotkey/heidi-hotkeys.ahk" || { echo "FATAL: heidi-hotkeys.ahk NOT bundled in build output"; exit 1; }
           test -f "$UNPACKED/resources/app.asar" || { echo "FATAL: app.asar missing from build output"; exit 1; }
@@ -48,7 +50,9 @@ jobs:
       - name: Verify HTML/JS bundled inside app.asar
         shell: bash
         run: |
-          ASAR="dist/win-unpacked/resources/app.asar"
+          UNPACKED="$(ls -d dist/win*-unpacked 2>/dev/null | head -1)"
+          test -n "$UNPACKED" || { echo "FATAL: no dist/win*-unpacked dir produced"; exit 1; }
+          ASAR="$UNPACKED/resources/app.asar"
           npx --yes @electron/asar list "$ASAR" | tr -d '\r' > asar-listing.txt
           echo "---- asar root entries ----"; grep -E '^/[^/]+$' asar-listing.txt || true
           for f in index.html settings.html overlay.html preload.js overlay-preload.js; do
