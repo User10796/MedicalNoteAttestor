@@ -29,6 +29,10 @@ jobs:
           grep -q "History of Present Illness:" autohotkey/heidi-hotkeys.ahk || { echo "FATAL: bare HPI header missing from AHK script"; exit 1; }
           grep -q "UTF-8-RAW" autohotkey/heidi-hotkeys.ahk || { echo "FATAL: AHK script not using UTF-8-RAW (BOM will break slot file)"; exit 1; }
 
+      - name: Verify main.js referenced files exist (source)
+        shell: bash
+        run: node scripts/verify-referenced-files.js main.js
+
       - name: Build portable exe (unpacked dir first, for verification)
         run: npm run build-dir
 
@@ -40,6 +44,16 @@ jobs:
           test -f "$UNPACKED/resources/autohotkey/heidi-hotkeys.ahk" || { echo "FATAL: heidi-hotkeys.ahk NOT bundled in build output"; exit 1; }
           test -f "$UNPACKED/resources/app.asar" || { echo "FATAL: app.asar missing from build output"; exit 1; }
           echo "Bundled resource verification PASSED"
+
+      - name: Verify HTML/JS bundled inside app.asar
+        shell: bash
+        run: |
+          ASAR="dist/win-unpacked/resources/app.asar"
+          for f in index.html settings.html overlay.html preload.js overlay-preload.js; do
+            npx --yes @electron/asar list "$ASAR" | grep -Eq "^/$f$" \
+              || { echo "FATAL: $f not bundled inside app.asar"; exit 1; }
+          done
+          echo "asar content verification PASSED"
 
       - name: Build final portable exe
         run: npx electron-builder --win portable
