@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Verifies required HTML/JS files are bundled at the root of app.asar.
-// Calls @electron/asar directly (no shell pipe / npx) to avoid pipefail+SIGPIPE issues.
+// Calls @electron/asar directly; normalizes entry paths so it works on
+// both Windows (backslashes) and posix runners.
 const fs = require('fs');
 const path = require('path');
 const asar = require('@electron/asar');
@@ -20,13 +21,17 @@ if (!fs.existsSync(asarPath)) {
   process.exit(1);
 }
 
-const entries = asar.listPackage(asarPath);
-const rootEntries = entries.filter(e => /^\/[^/]+$/.test(e));
-console.log('---- asar root entries ----');
-console.log(rootEntries.join('\n'));
+const raw = asar.listPackage(asarPath);
+console.log('---- raw asar entries (first 20) ----');
+console.log(raw.slice(0, 20).join('\n'));
 
-const required = ['/index.html', '/settings.html', '/overlay.html', '/preload.js', '/overlay-preload.js'];
-const missing = required.filter(r => !entries.includes(r));
+// normalize: backslash -> slash, strip leading slashes, lowercase for compare
+const norm = new Set(
+  raw.map(e => e.replace(/\\/g, '/').replace(/^\/+/, ''))
+);
+
+const required = ['index.html', 'settings.html', 'overlay.html', 'preload.js', 'overlay-preload.js'];
+const missing = required.filter(r => !norm.has(r));
 if (missing.length) {
   console.error('FATAL: missing from app.asar -> ' + missing.join(', '));
   process.exit(1);
