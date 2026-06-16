@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 16px;
+        }
+
+        h1 {
+            font-size: 18px;
+            margin-bottom: 16px;
+            color: #24292e;
+        }
+
+        h2 {
+            font-size: 14px;
+            margin-bottom: 12px;
+            color: #24292e;
+            border-bottom: 1px solid #e1e4e8;
+            padding-bottom: 8px;
+        }
+
+        .section {
+            background: white;
+            border: 1px solid #e1e4e8;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            color: #586069;
+            margin-bottom: 4px;
+        }
+
+        select, textarea, input[type="password"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #e1e4e8;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        select:focus, textarea:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #0366d6;
+        }
+
+        textarea {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 11px;
+            resize: vertical;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group label {
+            margin-bottom: 0;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: #0366d6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0256b9;
+        }
+
+        .btn-secondary {
+            background: #fafbfc;
+            border: 1px solid #e1e4e8;
+            color: #24292e;
+        }
+
+        .btn-secondary:hover {
+            background: #f3f4f6;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 16px;
+        }
+
+        .warning {
+            color: #cb2431;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .help-text {
+            font-size: 11px;
+            color: #586069;
+            margin-top: 4px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid #e1e4e8;
+            padding-bottom: 8px;
+        }
+
+        .tab {
+            padding: 6px 12px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 13px;
+            color: #586069;
+            border-radius: 4px;
+        }
+
+        .tab.active {
+            background: #0366d6;
+            color: white;
+        }
+
+        .tab:hover:not(.active) {
+            background: #f3f4f6;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .api-key-status {
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .api-key-status.set {
+            color: #22863a;
+        }
+
+        .api-key-status.not-set {
+            color: #cb2431;
+        }
+    </style>
+</head>
+<body>
+    <h1>Settings</h1>
+
+    <div class="tabs">
+        <button class="tab active" data-tab="heidi">Heidi Copy</button>
+        <button class="tab" data-tab="claude">Claude API</button>
+        <button class="tab" data-tab="attestation">Attestation</button>
+    </div>
+
+    <!-- Heidi Copy Tab -->
+    <div id="heidi-tab" class="tab-content active">
+        <div class="section">
+            <h2>Heidi Copy Settings</h2>
+
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="heidi-enabled" checked>
+                <label for="heidi-enabled">Enable Heidi Copy Hotkeys</label>
+            </div>
+
+            <div class="form-group">
+                <label for="hpi-hotkey">HPI Section Hotkey (Legacy)</label>
+                <select id="hpi-hotkey">
+                    <option value="PageUp">Page Up</option>
+                    <option value="PageDown">Page Down</option>
+                    <option value="F5">F5</option>
+                    <option value="F6">F6</option>
+                    <option value="F7">F7</option>
+                    <option value="F8">F8</option>
+                    <option value="F9">F9</option>
+                    <option value="F10">F10</option>
+                    <option value="F11">F11</option>
+                    <option value="F12">F12</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="ap-hotkey">A&P Section Hotkey (Legacy)</label>
+                <select id="ap-hotkey">
+                    <option value="PageUp">Page Up</option>
+                    <option value="PageDown" selected>Page Down</option>
+                    <option value="F5">F5</option>
+                    <option value="F6">F6</option>
+                    <option value="F7">F7</option>
+                    <option value="F8">F8</option>
+                    <option value="F9">F9</option>
+                    <option value="F10">F10</option>
+                    <option value="F11">F11</option>
+                    <option value="F12">F12</option>
+                </select>
+                <div id="hotkey-warning" class="warning" style="display: none;">
+                    &#9888;&#65039; HPI and A&P hotkeys must be different
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>v2 Capture &amp; Paste Hotkeys</h2>
+
+            <div class="form-group">
+                <label>Capture Hotkey</label>
+                <select id="capture-hotkey">
+                    <option value="F5">F5</option>
+                    <option value="F6">F6</option>
+                    <option value="F7">F7</option>
+                    <option value="F8" selected>F8</option>
+                    <option value="F9">F9</option>
+                    <option value="F10">F10</option>
+                    <option value="F11">F11</option>
+                    <option value="F12">F12</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Paste HPI Hotkey (Slot 1)</label>
+                <select id="paste-hotkey-1">
+                    <option value="F5">F5</option>
+                    <option value="F6">F6</option>
+                    <option value="F7">F7</option>
+                    <option value="F8">F8</option>
+                    <option value="F9" selected>F9</option>
+                    <option value="F10">F10</option>
+                    <option value="F11">F11</option>
+                    <option value="F12">F12</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Paste Exam Hotkey (Slot 2)</label>
+                <select id="paste-hotkey-2">
+                    <option value="F5">F5</option>
+                    <option value="F6">F6</option>
+                    <option value="F7">F7</option>
+                    <option value="F8">F8</option>
+                    <option value="F9">F9</option>
+                    <option value="F10" selected>F10</option>
+                    <option value="F11">F11</option>
+                    <option value="F12">F12</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Paste A/P Hotkey (Slot 3)</label>
+                <select id="paste-hotkey-3">
+                    <option value="F5">F5</option>
+                    <option value="F6">F6</option>
+                    <option value="F7">F7</option>
+                    <option value="F8">F8</option>
+                    <option value="F9">F9</option>
+                    <option value="F10">F10</option>
+                    <option value="F11" selected>F11</option>
+                    <option value="F12">F12</option>
+                </select>
+            </div>
+            <div id="paste-hotkey-warning" class="warning" style="display:none;">
+                &#9888;&#65039; Paste hotkeys must all be different
+            </div>
+            <div class="form-group">
+                <label for="exam-dot-phrase">Exam Dot Phrase (Slot 2 &mdash; F10)</label>
+                <textarea id="exam-dot-phrase" rows="6"
+                    placeholder="Enter your standard exam dot phrase. Pre-loaded into F10 slot."></textarea>
+                <div class="help-text">Persists across sessions. Pastes into Cerner Exam field.</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="help-text">
+                <strong>How to use (v2):</strong><br>
+                1. In Heidi, Ctrl+A then Ctrl+C to copy all text<br>
+                2. Press Capture hotkey &mdash; HPI and A/P load into slots<br>
+                3. Switch to Cerner (one trip):<br>
+                &nbsp;&nbsp;&bull; Click HPI field &rarr; F9 (auto-pastes)<br>
+                &nbsp;&nbsp;&bull; Click Exam field &rarr; F10 (auto-pastes)<br>
+                &nbsp;&nbsp;&bull; Click A/P field &rarr; F11 (auto-pastes + action items)<br>
+                4. Save draft. Repeat for next patient.
+            </div>
+        </div>
+    </div>
+
+    <!-- Claude API Tab -->
+    <div id="claude-tab" class="tab-content">
+        <div class="section">
+            <h2>API Key</h2>
+
+            <div class="form-group">
+                <label for="api-key">Claude API Key</label>
+                <input type="password" id="api-key" placeholder="sk-ant-...">
+                <div id="api-key-status" class="api-key-status not-set">No API key set</div>
+                <div class="help-text">
+                    Get your key from console.anthropic.com/settings/keys. Your key is stored locally and never uploaded.
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Custom Claude Instructions</h2>
+
+            <div class="form-group">
+                <label for="claude-instructions">Additional instructions for Claude API</label>
+                <textarea id="claude-instructions" rows="8" placeholder="Add any custom instructions here. They will be appended to the default prompt."></textarea>
+                <div class="help-text">
+                    Examples: "Always include 'Return to clinic in X weeks'", "Format diagnoses in a specific way"
+                </div>
+            </div>
+
+            <button class="btn btn-secondary" id="clear-instructions">Clear Instructions</button>
+        </div>
+    </div>
+
+    <!-- Attestation Tab -->
+    <div id="attestation-tab" class="tab-content">
+        <div class="section">
+            <h2>Attestation Template</h2>
+
+            <div class="form-group">
+                <label for="attestation-template">Custom attestation template</label>
+                <textarea id="attestation-template" rows="12" placeholder="Use [DYNAMIC_PLAN_TEXT] as a placeholder for the auto-generated plan text."></textarea>
+                <div class="help-text">
+                    Use [DYNAMIC_PLAN_TEXT] where you want the plan type text to appear.
+                </div>
+            </div>
+
+            <button class="btn btn-secondary" id="reset-template">Reset to Default</button>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn btn-secondary" id="cancel-btn">Cancel</button>
+        <button class="btn btn-primary" id="save-btn">Save</button>
+    </div>
+
+    <script>
+        // Tab switching
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabId = tab.dataset.tab;
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(`${tabId}-tab`).classList.add('active');
+            });
+        });
+
+        // Elements
+        const heidiEnabled = document.getElementById('heidi-enabled');
+        const hpiHotkey = document.getElementById('hpi-hotkey');
+        const apHotkey = document.getElementById('ap-hotkey');
+        const hotkeyWarning = document.getElementById('hotkey-warning');
+        const apiKeyInput = document.getElementById('api-key');
+        const apiKeyStatus = document.getElementById('api-key-status');
+        const claudeInstructions = document.getElementById('claude-instructions');
+        const attestationTemplate = document.getElementById('attestation-template');
+        const saveBtn = document.getElementById('save-btn');
+        const cancelBtn = document.getElementById('cancel-btn');
+        const clearInstructionsBtn = document.getElementById('clear-instructions');
+        const resetTemplateBtn = document.getElementById('reset-template');
+
+        const DEFAULT_TEMPLATE = `For this patient encounter, I personally saw this patient and formulated the plan together with the APP at the time of this visit. I agree with the [DYNAMIC_PLAN_TEXT]. I reviewed the APP's documentation, medical decision making and treatment plan, and agree with the documentation above. By my electronic signature I authenticate all APP orders and attest that all pages have been reviewed and completed.
+
+Physical exam: Gen: No acute distress
+HEENT: EOMI, NC/AT
+CV: Extremities warm and perfused.
+Pulm: No increased work of breathing.
+Neuro: Moves extremities spontaneously. Alert and oriented.
+Psych: Answered all questions appropriately.
+
+Assessment: As above
+
+Plan:
+
+`;
+
+        // Load settings
+        async function loadSettings() {
+            const settings = await window.electronAPI.getSettings();
+            heidiEnabled.checked = settings.heidiCopyEnabled;
+            hpiHotkey.value = settings.hpiHotkey;
+            apHotkey.value = settings.apHotkey;
+            claudeInstructions.value = settings.customClaudeInstructions || '';
+            attestationTemplate.value = settings.customAttestationTemplate || DEFAULT_TEMPLATE;
+
+            // v2 hotkeys
+            document.getElementById('capture-hotkey').value  = settings.captureHotkey  || 'F8';
+            document.getElementById('paste-hotkey-1').value  = settings.pasteHotkey1   || 'F9';
+            document.getElementById('paste-hotkey-2').value  = settings.pasteHotkey2   || 'F10';
+            document.getElementById('paste-hotkey-3').value  = settings.pasteHotkey3   || 'F11';
+            document.getElementById('exam-dot-phrase').value = settings.examDotPhrase  || '';
+
+            // Show API key status (don't populate the field for security)
+            if (settings.claudeApiKey) {
+                apiKeyStatus.textContent = 'API key is set';
+                apiKeyStatus.className = 'api-key-status set';
+                apiKeyInput.placeholder = 'Key saved - enter new key to replace';
+            } else {
+                apiKeyStatus.textContent = 'No API key set';
+                apiKeyStatus.className = 'api-key-status not-set';
+            }
+
+            checkHotkeyConflict();
+            checkPasteHotkeyConflict();
+        }
+
+        loadSettings();
+
+        // Check for hotkey conflicts
+        function checkHotkeyConflict() {
+            if (hpiHotkey.value === apHotkey.value) {
+                hotkeyWarning.style.display = 'block';
+            } else {
+                hotkeyWarning.style.display = 'none';
+            }
+        }
+
+        function checkPasteHotkeyConflict() {
+            const p1 = document.getElementById('paste-hotkey-1').value;
+            const p2 = document.getElementById('paste-hotkey-2').value;
+            const p3 = document.getElementById('paste-hotkey-3').value;
+            const warning = document.getElementById('paste-hotkey-warning');
+            if (p1 === p2 || p1 === p3 || p2 === p3) {
+                warning.style.display = 'block';
+            } else {
+                warning.style.display = 'none';
+            }
+        }
+
+        hpiHotkey.addEventListener('change', checkHotkeyConflict);
+        apHotkey.addEventListener('change', checkHotkeyConflict);
+        document.getElementById('paste-hotkey-1').addEventListener('change', checkPasteHotkeyConflict);
+        document.getElementById('paste-hotkey-2').addEventListener('change', checkPasteHotkeyConflict);
+        document.getElementById('paste-hotkey-3').addEventListener('change', checkPasteHotkeyConflict);
+
+        // Save
+        saveBtn.addEventListener('click', async () => {
+            const currentSettings = await window.electronAPI.getSettings();
+
+            // Only update API key if user entered a new one
+            const newApiKey = apiKeyInput.value.trim();
+            const claudeApiKey = newApiKey ? newApiKey : currentSettings.claudeApiKey;
+
+            await window.electronAPI.saveSettings({
+                heidiCopyEnabled: heidiEnabled.checked,
+                hpiHotkey: hpiHotkey.value,
+                apHotkey: apHotkey.value,
+                captureHotkey:  document.getElementById('capture-hotkey').value,
+                pasteHotkey1:   document.getElementById('paste-hotkey-1').value,
+                pasteHotkey2:   document.getElementById('paste-hotkey-2').value,
+                pasteHotkey3:   document.getElementById('paste-hotkey-3').value,
+                examDotPhrase:  document.getElementById('exam-dot-phrase').value,
+                claudeApiKey: claudeApiKey,
+                customClaudeInstructions: claudeInstructions.value,
+                customAttestationTemplate: attestationTemplate.value === DEFAULT_TEMPLATE ? '' : attestationTemplate.value
+            });
+            window.close();
+        });
+
+        // Cancel
+        cancelBtn.addEventListener('click', () => {
+            window.close();
+        });
+
+        // Clear instructions
+        clearInstructionsBtn.addEventListener('click', () => {
+            claudeInstructions.value = '';
+        });
+
+        // Reset template
+        resetTemplateBtn.addEventListener('click', () => {
+            attestationTemplate.value = DEFAULT_TEMPLATE;
+        });
+    </script>
+</body>
+</html>

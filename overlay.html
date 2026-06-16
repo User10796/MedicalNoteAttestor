@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { width: 100vw; height: 100vh; overflow: hidden; cursor: crosshair; background: transparent; }
+        #screenshot { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; user-select: none; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.35); }
+        #selection { position: absolute; border: 2px solid #0366d6; background: rgba(3, 102, 214, 0.08); display: none; }
+        #instructions { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.75); color: white; padding: 8px 16px; border-radius: 6px; font-family: -apple-system, sans-serif; font-size: 14px; pointer-events: none; white-space: nowrap; }
+    </style>
+</head>
+<body>
+    <img id="screenshot" src="" draggable="false">
+    <div id="overlay"></div>
+    <div id="selection"></div>
+    <div id="instructions">Drag to select text area &nbsp;·&nbsp; Press Esc to cancel</div>
+    <script>
+        const selectionEl = document.getElementById('selection');
+        let startX, startY, isDrawing = false;
+
+        window.overlayAPI.setScreenshot((dataUrl) => {
+            document.getElementById('screenshot').src = dataUrl;
+        });
+
+        document.addEventListener('mousedown', (e) => {
+            startX = e.clientX; startY = e.clientY; isDrawing = true;
+            selectionEl.style.display = 'block';
+            selectionEl.style.left = startX + 'px'; selectionEl.style.top = startY + 'px';
+            selectionEl.style.width = '0px'; selectionEl.style.height = '0px';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            const x = Math.min(e.clientX, startX), y = Math.min(e.clientY, startY);
+            const w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
+            selectionEl.style.left = x + 'px'; selectionEl.style.top = y + 'px';
+            selectionEl.style.width = w + 'px'; selectionEl.style.height = h + 'px';
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            if (!isDrawing) return; isDrawing = false;
+            const x = Math.min(e.clientX, startX), y = Math.min(e.clientY, startY);
+            const w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
+            if (w > 5 && h > 5) { window.overlayAPI.selectionDone({ x, y, width: w, height: h }); }
+            else { window.overlayAPI.selectionCancel(); }
+        });
+
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.overlayAPI.selectionCancel(); });
+    </script>
+</body>
+</html>
