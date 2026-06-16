@@ -15,7 +15,8 @@ class HeidiCopyService {
     // HPI headers (established vs new patient)
     private let hpiHeaders = [
         "Interval history, HPI:",
-        "History of Present Illness (HPI):"
+        "History of Present Illness (HPI):",
+        "History of Present Illness:"
     ]
 
     // A&P header
