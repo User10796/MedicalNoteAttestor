@@ -49,16 +49,7 @@ jobs:
 
       - name: Verify HTML/JS bundled inside app.asar
         shell: bash
-        run: |
-          UNPACKED="$(ls -d dist/win*-unpacked 2>/dev/null | head -1)"
-          test -n "$UNPACKED" || { echo "FATAL: no dist/win*-unpacked dir produced"; exit 1; }
-          ASAR="$UNPACKED/resources/app.asar"
-          npx --yes @electron/asar list "$ASAR" | tr -d '\r' > asar-listing.txt
-          echo "---- asar root entries ----"; grep -E '^/[^/]+$' asar-listing.txt || true
-          for f in index.html settings.html overlay.html preload.js overlay-preload.js; do
-            grep -Eq "^/$f$" asar-listing.txt || { echo "FATAL: $f not bundled inside app.asar"; exit 1; }
-          done
-          echo "asar content verification PASSED"
+        run: node scripts/verify-asar-contents.js
 
       - name: Build final portable exe
         run: npx electron-builder --win portable
