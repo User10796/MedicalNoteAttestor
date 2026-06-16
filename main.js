@@ -3,6 +3,11 @@ const { execSync, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
+// Anthropic model used for all Claude API calls.
+// The previous Sonnet 4 model (dated 20250514) was retired from the API on 2026-06-15;
+// claude-sonnet-4-6 (Claude Sonnet 4.6) is its API-compatible same-tier successor.
+const CLAUDE_MODEL = 'claude-sonnet-4-6';
+
 let ahkProcess = null;
 
 function getAhkPaths() {
@@ -844,7 +849,7 @@ async function extractActionItems(apText) {
                 'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
+                model: CLAUDE_MODEL,
                 max_tokens: 512,
                 system: ACTION_ITEM_PROMPT,
                 messages: [{ role: 'user', content: apText }]
@@ -897,7 +902,7 @@ async function callClaudeAPI(text, customInstructions) {
                 'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
+                model: CLAUDE_MODEL,
                 max_tokens: 4096,
                 system: systemPrompt,
                 messages: [{ role: 'user', content: text }]
