@@ -49,9 +49,10 @@ jobs:
         shell: bash
         run: |
           ASAR="dist/win-unpacked/resources/app.asar"
+          npx --yes @electron/asar list "$ASAR" | tr -d '\r' > asar-listing.txt
+          echo "---- asar root entries ----"; grep -E '^/[^/]+$' asar-listing.txt || true
           for f in index.html settings.html overlay.html preload.js overlay-preload.js; do
-            npx --yes @electron/asar list "$ASAR" | grep -Eq "^/$f$" \
-              || { echo "FATAL: $f not bundled inside app.asar"; exit 1; }
+            grep -Eq "^/$f$" asar-listing.txt || { echo "FATAL: $f not bundled inside app.asar"; exit 1; }
           done
           echo "asar content verification PASSED"
 
