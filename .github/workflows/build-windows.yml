@@ -21,6 +21,13 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Stamp build info
+        shell: bash
+        run: node scripts/gen-build-info.js
+        env:
+          GIT_COMMIT: ${{ github.sha }}
+          BUILD_RUN_NUMBER: ${{ github.run_number }}
+
       - name: Verify AHK source resources exist
         shell: bash
         run: |

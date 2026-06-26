@@ -19,5 +19,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onSlotEmpty:         (cb) => ipcRenderer.on('slot-empty', (e, n) => cb(n)),
     onBulletsReady:      (cb) => ipcRenderer.on('bullets-ready', (e, d) => cb(d)),
     setWindowCollapsed:  (collapsed) => ipcRenderer.invoke('set-window-collapsed', collapsed),
-    openSettings:        () => ipcRenderer.invoke('open-settings')
+    openSettings:        () => ipcRenderer.invoke('open-settings'),
+    getAppInfo:          () => ipcRenderer.invoke('get-app-info')
 });

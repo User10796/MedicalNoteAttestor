@@ -23,3 +23,6 @@ MedicalNoteAttestor-Windows/dist/
 # IDE
 .idea/
 .vscode/
+
+# Generated at build time
+build-info.json

@@ -356,6 +356,11 @@
         </div>
     </div>
 
+    <div class="section">
+        <h2>About</h2>
+        <div id="about-info" style="font-size:13px;color:#586069;line-height:1.7;">Loading&hellip;</div>
+    </div>
+
     <div class="btn-group">
         <button class="btn btn-secondary" id="cancel-btn">Cancel</button>
         <button class="btn btn-primary" id="save-btn">Save</button>
@@ -502,6 +507,22 @@ Plan:
         resetTemplateBtn.addEventListener('click', () => {
             attestationTemplate.value = DEFAULT_TEMPLATE;
         });
+
+        // Populate About panel (build provenance + active model)
+        (async () => {
+            try {
+                const info = await window.electronAPI.getAppInfo();
+                const built = info.builtAt ? new Date(info.builtAt).toLocaleString() : 'local dev build';
+                document.getElementById('about-info').innerHTML =
+                    '<strong>Medical Note Attestor</strong> v' + info.version + '<br>' +
+                    'Build: <code>' + info.commit + '</code>' +
+                    (info.runNumber ? ' (CI #' + info.runNumber + ')' : '') + '<br>' +
+                    'Built: ' + built + '<br>' +
+                    'Claude model: <code>' + info.model + '</code>';
+            } catch (e) {
+                document.getElementById('about-info').textContent = 'Build info unavailable';
+            }
+        })();
     </script>
 </body>
 </html>

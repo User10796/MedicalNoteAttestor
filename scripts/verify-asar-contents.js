@@ -30,7 +30,7 @@ const norm = new Set(
   raw.map(e => e.replace(/\\/g, '/').replace(/^\/+/, ''))
 );
 
-const required = ['index.html', 'settings.html', 'overlay.html', 'preload.js', 'overlay-preload.js'];
+const required = ['index.html', 'settings.html', 'overlay.html', 'preload.js', 'overlay-preload.js', 'build-info.json'];
 const missing = required.filter(r => !norm.has(r));
 if (missing.length) {
   console.error('FATAL: missing from app.asar -> ' + missing.join(', '));
