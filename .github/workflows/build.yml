@@ -1,0 +1,71 @@
+# Builds macOS .app (unsigned) + Windows portable .exe on every tag push.
+# Tag a release:  git tag v1.0.0 && git push --tags
+name: Build MedicalNoteAttestor
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}   # manual "Run workflow" button
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (unsigned, Release)
+        run: |
+          xcodebuild -project MedicalNoteAttestor.xcodeproj \
+            -scheme "MedicalNoteAttestor" \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Zip .app
+        run: |
+          APP=$(find build/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          ditto -c -k --sequesterRsrc --keepParent "$APP" MedicalNoteAttestor-macOS.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MedicalNoteAttestor-macOS
+          path: MedicalNoteAttestor-macOS.zip
+
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: MedicalNoteAttestor-Windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: MedicalNoteAttestor-Windows/package-lock.json
+      - run: npm ci
+      - run: npm run build     # electron-builder -> dist/MedicalNoteAttestor.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MedicalNoteAttestor-Windows
+          path: MedicalNoteAttestor-Windows/dist/*.exe
+
+  release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/MedicalNoteAttestor-macOS/*.zip
+            artifacts/MedicalNoteAttestor-Windows/*.exe
+          body: |
+            **macOS**: unzip, right-click → Open the first time (unsigned build).
+            **Windows**: portable .exe, no install needed. SmartScreen: More info → Run anyway.
