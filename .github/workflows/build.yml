@@ -33,23 +33,35 @@ jobs:
           path: MedicalNoteAttestor-macOS.zip
 
   build-windows:
+    # The Electron project lives at the repo ROOT (package.json, main.js, scripts/,
+    # autohotkey/) — not in a subfolder. No package-lock.json is committed, so use
+    # `npm install`, not `npm ci`. Mirrors the proven-working build-windows.yml.
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: MedicalNoteAttestor-Windows
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: MedicalNoteAttestor-Windows/package-lock.json
-      - run: npm ci
-      - run: npm run build     # electron-builder -> dist/MedicalNoteAttestor.exe
+      - run: npm install
+      - name: Stamp build info (version + commit)
+        shell: bash
+        run: node scripts/gen-build-info.js
+        env:
+          GIT_COMMIT: ${{ github.sha }}
+          BUILD_RUN_NUMBER: ${{ github.run_number }}
+      - run: npm run build     # electron-builder --win portable -> dist/MedicalNoteAttestor.exe
+      - name: Verify exe exists
+        shell: bash
+        run: |
+          if [ ! -f dist/MedicalNoteAttestor.exe ]; then
+            echo "FATAL - dist/MedicalNoteAttestor.exe not produced"
+            ls -la dist/
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: MedicalNoteAttestor-Windows
-          path: MedicalNoteAttestor-Windows/dist/*.exe
+          path: dist/*.exe
 
   release:
     needs: [build-macos, build-windows]
