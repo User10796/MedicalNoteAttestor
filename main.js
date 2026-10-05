@@ -110,8 +110,9 @@ function readSlotsFile() {
         if (data.ap  !== undefined) slots.ap  = data.ap  || null;
         const ts = data.timestamp != null ? String(data.timestamp) : null;
         const isNewCapture = captureTracker.observe(ts);  // the leftover file at launch is not a new capture
+        if (isNewCapture) beginCapture(ts);               // always drop the previous patient's library text
         sendSlotState();
-        if (isNewCapture && (slots.ap || slots.hpi)) startLibraryFlow('heidi', ts);
+        if (isNewCapture && slots.ap) startLibraryFlow('heidi', ts);
         return true;
     } catch (e) { console.error('Failed to read slots file:', e.message); return false; }
 }
@@ -271,9 +272,14 @@ const captureFlow = createCaptureFlow({
     onComposed: (c) => { lastComposed = c; sendSlotState(); }
 });
 
-function startLibraryFlow(source, captureTs) {
+// New capture: forget the previous capture's composed text before anything can paste it.
+function beginCapture(captureTs) {
     currentCaptureTs = captureTs;
     lastComposed = null;
+    captureFlow.reset();
+}
+
+function startLibraryFlow(source, captureTs) {
     captureFlow.onCapture({ source, captureTs, ap: slots.ap, exam: getExamSlot() })
         .then(r => { if (r && r.skipped && r.reason !== 'superseded') sendSlotState(); })
         .catch(e => console.error('library flow failed:', e.message));
@@ -339,12 +345,12 @@ function currentHotkeys() {
 }
 
 function writeHotkeysJson() {
-    if (process.platform !== 'win32') return;
+    if (process.platform !== 'win32') return null;
     const b = currentHotkeys();
     const out = { version: 1, written_at: new Date().toISOString(), accelerators: b };
     for (const action of Object.keys(HOTKEY_KEYS)) out['ahk_' + action] = core.toAhkHotkey(b[action]);
-    try { writeUtf8NoBom(path.join(getAhkPaths().dir, 'hotkeys.json'), JSON.stringify(out, null, 2)); }
-    catch (e) { console.error('Failed to write hotkeys.json:', e.message); }
+    try { writeUtf8NoBom(path.join(getAhkPaths().dir, 'hotkeys.json'), JSON.stringify(out, null, 2)); return null; }
+    catch (e) { console.error('Failed to write hotkeys.json:', e.message); return e.message; }
 }
 
 let mainWindow;
@@ -620,7 +626,9 @@ async function performCapture() {
     slots.hpi = extractHPI(text) || null;
     slots.ap  = extractAP(text)  || null;
     const exam = getExamSlot();
-    if (slots.ap || slots.hpi) startLibraryFlow('heidi', String(Date.now()));
+    const captureTs = String(Date.now());
+    beginCapture(captureTs);
+    if (slots.ap) startLibraryFlow('heidi', captureTs);
 
     if (mainWindow) mainWindow.webContents.send('capture-result', {
         success: true,
@@ -866,9 +874,10 @@ ipcMain.handle('save-hotkeys', (e, bindings) => {
     const v = core.validateHotkeys(bindings || {}, process.platform);
     if (!v.ok) return v;
     for (const [action, key] of Object.entries(HOTKEY_KEYS)) store.set(key, v.bindings[action]);
-    writeHotkeysJson();
+    const writeError = writeHotkeysJson();
     registerHotkeys();
     sendSlotState();
+    if (writeError) return { ...v, ok: false, errors: [{ action: 'all', message: 'Could not hand the new hotkeys to AutoHotkey (' + writeError + '). Try Apply again.' }] };
     return v;
 });
 

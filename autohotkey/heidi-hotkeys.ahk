@@ -54,6 +54,7 @@ DoCapture() {
     ClipWait 2
     text := A_Clipboard
     if (text = "") {
+        lastCaptureTs := ""   ; a failed capture must never pick up library text composed for the previous one
         SoundBeep 300, 200
         return
     }

@@ -38,6 +38,11 @@
   button.b { padding: 6px 14px; border-radius: 4px; border: 1px solid #d1d5da; background: #fafbfc; cursor: pointer; font-size: 13px; }
   button.primary { background: #2ea44f; color: #fff; border-color: #2a8f47; }
   button.link { border: none; background: none; color: #0366d6; cursor: pointer; font-size: 12px; }
+  .preview { margin-top: 4px; background: #fff; border: 1px solid #e1e4e8; border-radius: 4px; padding: 4px 8px; }
+  .preview summary { cursor: pointer; font-size: 12px; color: #586069; }
+  .preview .ph { font-weight: 600; font-size: 12px; margin-top: 6px; }
+  .preview pre { white-space: pre-wrap; font-size: 11px; font-family: Consolas, Menlo, monospace; margin: 2px 0 4px; color: #24292e; }
+  .notices { max-height: 210px; overflow-y: auto; }
   .hidden { display: none; }
 </style>
 </head>
@@ -46,7 +51,7 @@
     <h1>Payer <small id="src"></small></h1>
     <input type="text" id="q" placeholder="Type payer name or alias (e.g. Medicare, BCBS, PSHP)" autocomplete="off" spellcheck="false">
     <div class="list" id="list"></div>
-    <div class="hint" id="payer-hint">Enter = choose &middot; 1&ndash;9, 0 = recent payer &middot; Esc = Skip (paste as usual, no library text)</div>
+    <div class="hint" id="payer-hint">Enter = choose &middot; 1&ndash;9, 0 then Enter = recent payer &middot; Esc = Skip (paste as usual, no library text)</div>
     <div class="btns"><button class="b" id="skip1">Skip (Esc)</button><span></span></div>
   </section>
 

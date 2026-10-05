@@ -247,3 +247,24 @@ test('duplicate binding rejected; invalid falls back; OS conflicts warned', () =
     assert.strictEqual(v.warnings.length, 1);
     assert.strictEqual(core.normalizeHotkey('A'), null, 'bare letters would hijack typing');
 });
+
+test('bare non-F keys are rejected (would hijack typing); F-keys and PageUp/PageDown allowed', () => {
+    for (const k of ['Space', 'Delete', 'Up', 'Home', 'End', 'Tab', 'Enter']) assert.strictEqual(core.normalizeHotkey(k), null, k);
+    for (const k of ['F7', 'F12', 'PageUp', 'PageDown', 'Ctrl+Space', 'Alt+Delete']) assert.ok(core.normalizeHotkey(k), k);
+});
+
+test('Windows: PageUp/PageDown are the legacy AHK copy keys and cannot be rebound to', () => {
+    const v = core.validateHotkeys({ pasteHpi: 'PageUp' }, 'win32');
+    assert.strictEqual(v.ok, false);
+    assert.match(v.errors[0].message, /legacy HPI copy key/);
+    assert.ok(core.validateHotkeys({ pasteHpi: 'PageUp' }, 'darwin').ok);
+});
+
+test('no wrong-side exam text when the chosen side is missing', () => {
+    const b = clone(bundle);
+    const e = b.entries.find(x => x.key === 'medicare_ab_ga/sij_injection');
+    delete e.exam_text.left;
+    const [r] = core.resolveSelections(b, 'medicare_ab_ga', [row('sij_injection', 'left')]);
+    assert.strictEqual(r.examText, '');
+    assert.ok(!/on the right/.test(r.examText));
+});

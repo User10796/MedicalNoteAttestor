@@ -97,3 +97,12 @@ test('capture tracker: no slot file at launch -> the first file is a new capture
     assert.strictEqual(t.observe('300'), true);
     assert.strictEqual(t.observe('300'), false);
 });
+
+test('reset after a composed capture drops the composed text and files', async () => {
+    const { flow, store } = makeFlow(confirmAll('medicare_ab_ga'));
+    await flow.onCapture({ source: 'heidi', captureTs: '7', ap: AP, exam: '' });
+    assert.ok(flow.composed());
+    flow.reset();
+    assert.strictEqual(flow.composed(), null);
+    assert.ok(!fs.existsSync(store.files.exam) && !fs.existsSync(store.files.ap));
+});

@@ -99,13 +99,28 @@
         box.textContent = '';
         if (!payer) return;
         const items = rows.filter(r => r.procedure_id);
-        C.resolveSelections(init.bundle, payer.payer_id, items).forEach(res => {
+        const results = C.resolveSelections(init.bundle, payer.payer_id, items);
+        results.forEach(res => {
             if (!res.notice) return;
             const n = document.createElement('div');
             n.className = 'notice' + (res.marker ? ' ' + res.marker : '');
             n.textContent = res.notice;
             box.append(n);
         });
+        // Exactly what will be added, so Sterling can see it before Insert (and trim after pasting).
+        const ins = results.filter(r => r.insert);
+        if (ins.length) {
+            const d = document.createElement('details'); d.className = 'preview';
+            const sm = document.createElement('summary'); sm.textContent = 'Preview inserted text (' + ins.length + ')';
+            d.append(sm);
+            ins.forEach(r => {
+                const h = document.createElement('div'); h.className = 'ph';
+                h.textContent = (procById[r.procedure_id] || {}).name || r.procedure_id; d.append(h);
+                if (r.examText) { const e = document.createElement('pre'); e.textContent = 'F10 exam:\n' + r.examText; d.append(e); }
+                if (r.dotphrase) { const t = document.createElement('pre'); t.textContent = 'F11 dot-phrase:\n' + r.dotphrase; d.append(t); }
+            });
+            box.append(d);
+        }
     }
     function insert() {
         if (!payer) return;
@@ -121,9 +136,11 @@
             else if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); renderList(); e.preventDefault(); }
             else if (e.key === 'Enter') { e.preventDefault(); if (sel >= 0) choosePayer(matches[sel]); }
             else if (/^[0-9]$/.test(e.key) && !$('q').value) {
+                // A digit only highlights that recent payer; Enter confirms (a stray digit can't pick one).
                 const pinned = matches.filter(m => m.pinned);
                 const k = e.key === '0' ? 9 : Number(e.key) - 1;
-                if (pinned[k]) { e.preventDefault(); choosePayer(pinned[k]); }
+                e.preventDefault();
+                if (pinned[k]) { sel = matches.indexOf(pinned[k]); renderList(); }
             }
         } else if (e.key === 'Enter' && e.target.tagName !== 'SELECT' && e.target.className !== 'link' && e.target.className !== 'x') {
             e.preventDefault(); insert();
