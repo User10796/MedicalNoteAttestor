@@ -4,6 +4,7 @@
   "description": "Medical Note Attestor with Heidi Copy feature",
   "main": "main.js",
   "scripts": {
+    "test": "node --test",
     "start": "electron .",
     "prestart": "node scripts/gen-build-info.js",
     "inject-key": "node -e \"const fs=require('fs');const k=process.env.CLAUDE_API_KEY||'';const f='main.js';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('__CLAUDE_API_KEY__',k))\"",
@@ -21,9 +22,30 @@
   "build": {
     "appId": "com.sterling.medicalnoteattestor",
     "productName": "Medical Note Attestor",
-    "win": { "target": [{ "target": "portable", "arch": ["x64"] }] },
-    "portable": { "artifactName": "MedicalNoteAttestor.exe", "requestExecutionLevel": "user" },
-    "extraResources": [{ "from": "autohotkey/", "to": "autohotkey/", "filter": ["AutoHotkey64.exe", "heidi-hotkeys.ahk"] }],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "MedicalNoteAttestor.exe",
+      "requestExecutionLevel": "user"
+    },
+    "extraResources": [
+      {
+        "from": "autohotkey/",
+        "to": "autohotkey/",
+        "filter": [
+          "AutoHotkey64.exe",
+          "heidi-hotkeys.ahk"
+        ]
+      }
+    ],
     "files": [
       "**/*",
       "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
@@ -35,7 +57,12 @@
       "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
       "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
       "!**/{appveyor.yml,.travis.yml,circle.yml}",
-      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}",
+      "!test/**",
+      "!CLAUDE.md",
+      "!SPEC_*.md",
+      "!MedicalNoteAttestor/**",
+      "!MedicalNoteAttestor.xcodeproj/**"
     ]
   }
 }
