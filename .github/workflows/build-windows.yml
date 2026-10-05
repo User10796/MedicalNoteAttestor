@@ -25,6 +25,20 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Bundle criteria library snapshot (latest release)
+        # Read-only token from the CRITERIA_LIBRARY_TOKEN secret, used only by gh here; never
+        # written to disk, the artifact, or the log (Actions masks it).
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.CRITERIA_LIBRARY_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" || { echo "FATAL: CRITERIA_LIBRARY_TOKEN secret not available"; exit 1; }
+          mkdir -p resources
+          tag="$(gh release view --repo User10796/pain-criteria-library --json tagName -q .tagName)"
+          gh release download "$tag" --repo User10796/pain-criteria-library -p library.json -O resources/library.snapshot.json --clobber
+          node scripts/stamp-library-snapshot.js resources/library.snapshot.json "$tag"
+
       - name: Stamp build info
         shell: bash
         run: node scripts/gen-build-info.js
@@ -37,8 +51,25 @@ jobs:
         run: |
           test -f autohotkey/AutoHotkey64.exe || { echo "FATAL: autohotkey/AutoHotkey64.exe missing from repo"; exit 1; }
           test -f autohotkey/heidi-hotkeys.ahk || { echo "FATAL: autohotkey/heidi-hotkeys.ahk missing from repo"; exit 1; }
+          test -f autohotkey/mna-lib.ahk || { echo "FATAL: autohotkey/mna-lib.ahk missing from repo"; exit 1; }
           grep -q "History of Present Illness:" autohotkey/heidi-hotkeys.ahk || { echo "FATAL: bare HPI header missing from AHK script"; exit 1; }
           grep -q "UTF-8-RAW" autohotkey/heidi-hotkeys.ahk || { echo "FATAL: AHK script not using UTF-8-RAW (BOM will break slot file)"; exit 1; }
+
+      - name: AutoHotkey script validates (syntax + includes)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath autohotkey\AutoHotkey64.exe -ArgumentList '/ErrorStdOut','/Validate','autohotkey\heidi-hotkeys.ahk' -Wait -PassThru -NoNewWindow -RedirectStandardError ahk-validate.txt
+          Get-Content ahk-validate.txt -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { Write-Error "heidi-hotkeys.ahk failed validation (exit $($p.ExitCode))"; exit 1 }
+          Write-Host "heidi-hotkeys.ahk validates"
+
+      - name: AutoHotkey unit tests (mna-lib.ahk)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath autohotkey\AutoHotkey64.exe -ArgumentList '/ErrorStdOut','autohotkey\test\test-mna-lib.ahk' -Wait -PassThru -NoNewWindow -RedirectStandardOutput ahk-test.txt -RedirectStandardError ahk-test-err.txt
+          Get-Content ahk-test.txt, ahk-test-err.txt -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { Write-Error "AHK tests failed (exit $($p.ExitCode))"; exit 1 }
+          if (-not (Select-String -Path ahk-test.txt -Pattern ' passed, 0 failed' -Quiet)) { Write-Error "AHK tests produced no summary"; exit 1 }
 
       - name: Verify main.js referenced files exist (source)
         shell: bash
@@ -55,6 +86,7 @@ jobs:
           echo "Using unpacked dir: $UNPACKED"
           test -f "$UNPACKED/resources/autohotkey/AutoHotkey64.exe" || { echo "FATAL: AutoHotkey64.exe NOT bundled in build output"; exit 1; }
           test -f "$UNPACKED/resources/autohotkey/heidi-hotkeys.ahk" || { echo "FATAL: heidi-hotkeys.ahk NOT bundled in build output"; exit 1; }
+          test -f "$UNPACKED/resources/autohotkey/mna-lib.ahk" || { echo "FATAL: mna-lib.ahk NOT bundled in build output"; exit 1; }
           test -f "$UNPACKED/resources/app.asar" || { echo "FATAL: app.asar missing from build output"; exit 1; }
           echo "Bundled resource verification PASSED"
 

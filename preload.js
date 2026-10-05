@@ -20,5 +20,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onBulletsReady:      (cb) => ipcRenderer.on('bullets-ready', (e, d) => cb(d)),
     setWindowCollapsed:  (collapsed) => ipcRenderer.invoke('set-window-collapsed', collapsed),
     openSettings:        () => ipcRenderer.invoke('open-settings'),
-    getAppInfo:          () => ipcRenderer.invoke('get-app-info')
+    getAppInfo:          () => ipcRenderer.invoke('get-app-info'),
+    libraryStatus:       () => ipcRenderer.invoke('library-status'),
+    libraryRefresh:      () => ipcRenderer.invoke('library-refresh'),
+    librarySetToken:     (t) => ipcRenderer.invoke('library-set-token', t),
+    librarySetOptions:   (o) => ipcRenderer.invoke('library-set-options', o),
+    getHotkeys:          () => ipcRenderer.invoke('get-hotkeys'),
+    saveHotkeys:         (b) => ipcRenderer.invoke('save-hotkeys', b)
 });

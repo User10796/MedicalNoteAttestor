@@ -348,9 +348,13 @@ window.electronAPI.onCaptureResult((data) => {
                       apPrev.classList.remove('empty'); }
     }
 
+    if (data.hotkeys) updateHotkeyLabels({ captureHotkey: data.hotkeys.capture, pasteHotkey1: data.hotkeys.pasteHpi,
+                                           pasteHotkey2: data.hotkeys.pasteExam, pasteHotkey3: data.hotkeys.pasteAp });
+
     const loaded = [data.hpiLoaded && 'HPI', data.apLoaded && 'A/P'].filter(Boolean).join(' + ');
     const ok = data.hpiLoaded || data.apLoaded;
-    setHeidiStatus(ok ? `\u2713 Captured: ${loaded}` : '\u26A0\uFE0F No sections found', ok ? 'success' : 'error');
+    const lib = data.library && data.library.composed ? ' \u00B7 library text added' : '';
+    setHeidiStatus(ok ? `\u2713 Captured: ${loaded}${lib}` : '\u26A0\uFE0F No sections found', ok ? 'success' : 'error');
 });
 
 window.electronAPI.onBulletsReady((data) => {

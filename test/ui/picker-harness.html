@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<!-- Dev harness: open via a local static server at the repo root (e.g. python3 -m http.server)
+     /test/ui/picker-harness.html?ap=<url-encoded A&P>. Stubs window.pickerAPI and feeds picker.html
+     the test fixture bundle + real detection. window.__done holds the picker's answer. -->
+<html><head><meta charset="utf-8"><title>harness</title></head><body>
+<script src="/lib/mna-core.js"></script>
+<script>
+(async () => {
+  const ap = new URLSearchParams(location.search).get('ap') ||
+    'Lumbar spondylosis.\nProceed with bilateral L4-5, L5-S1 medial branch blocks.\nSchedule right SIJ injection.\nSubmit for SCS trial.';
+  const bundle = await (await fetch('/test/fixtures/library.fixture.json')).json();
+  const detection = MNACore.detectProcedures(ap, bundle);
+  let initCb = null;
+  window.pickerAPI = { onInit: (cb) => { initCb = cb; }, done: (a) => { window.__done = a === null ? 'SKIP' : a; document.title = 'DONE'; } };
+  const html = await (await fetch('/picker.html')).text();
+  document.open(); document.write(html.replace(/<meta http-equiv[^>]*>/, '<base href="/">').replace(/\.js"/g, '.js?t=' + Date.now() + '"')); document.close();
+  const wait = () => new Promise(r => setTimeout(r, 50));
+  while (!initCb) await wait();
+  initCb({ source: 'heidi', bundle, detection,
+           recents: ['bcbs_ga', 'medicare_ab_ga', 'humana_ma'], sessionLastPayer: 'bcbs_ga' });
+})();
+</script></body></html>

@@ -1,8 +1,11 @@
-const { app, BrowserWindow, globalShortcut, clipboard, ipcMain, Menu, net, desktopCapturer, screen } = require('electron');
+const { app, BrowserWindow, globalShortcut, clipboard, ipcMain, Menu, net, desktopCapturer, screen, safeStorage } = require('electron');
 const { execSync, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { createMtimePoller, parseSlotsJson } = require('./lib/slot-poller');
+const core = require('./lib/mna-core');
+const { createLibraryClient, writeUtf8NoBom } = require('./lib/library-client');
+const { createCaptureFlow, createComposedStore } = require('./lib/capture-flow');
 
 // Anthropic model used for all Claude API calls.
 // The previous Sonnet 4 model (dated 20250514) was retired from the API on 2026-06-15;
@@ -58,6 +61,7 @@ function launchAHK() {
 function killAHK() {
     if (ahkProcess) { try { ahkProcess.kill(); } catch(e) {} ahkProcess = null; }
     if (slotsPoller) { slotsPoller.stop(); slotsPoller = null; }
+    if (process.platform === 'win32') { try { composedStore().clear(); } catch (e) {} }
 }
 
 function writeAhkConfig(examDotPhrase) {
@@ -69,19 +73,22 @@ function writeAhkConfig(examDotPhrase) {
 }
 
 let slotsPoller = null;
+let lastSlotsTs; // undefined until the first read after launch
 
 function sendSlotState() {
     if (!mainWindow) return;
-    const exam = getExamSlot();
+    const exam = effectiveExam();
     mainWindow.webContents.send('capture-result', {
         success: true,
         hpiLoaded: !!slots.hpi,
         apLoaded: !!slots.ap,
         examLoaded: !!exam,
         hpiPreview: slots.hpi ? slots.hpi.substring(0, 80) : null,
-        apPreview: slots.ap ? slots.ap.substring(0, 80) : null,
+        apPreview: effectiveAp() ? effectiveAp().substring(0, 80) : null,
         examPreview: exam ? exam.substring(0, 80) : null,
-        bulletsLoading: false
+        bulletsLoading: false,
+        library: libraryUiState(),
+        hotkeys: currentHotkeys()
     });
 }
 
@@ -100,7 +107,11 @@ function readSlotsFile() {
         const data = parseSlotsJson(fs.readFileSync(slotsPath, 'utf-8'));
         if (data.hpi !== undefined) slots.hpi = data.hpi || null;
         if (data.ap  !== undefined) slots.ap  = data.ap  || null;
+        const ts = data.timestamp != null ? String(data.timestamp) : null;
+        const isNewCapture = ts && lastSlotsTs !== undefined && ts !== lastSlotsTs;
+        lastSlotsTs = ts;   // first read at launch only records the file's state (no picker for an old capture)
         sendSlotState();
+        if (isNewCapture && (slots.ap || slots.hpi)) startLibraryFlow('heidi', ts);
         return true;
     } catch (e) { console.error('Failed to read slots file:', e.message); return false; }
 }
@@ -115,6 +126,10 @@ const DEFAULTS = {
     pasteHotkey2: 'F10',
     pasteHotkey3: 'F11',
     examDotPhrase: '',
+    libraryEnabled: true,
+    libraryInsertion: 'end',     // 'end' | 'after_plan_line'
+    libraryTokenEnc: '',         // safeStorage-encrypted (DPAPI on Windows); never plaintext
+    payerRecents: [],
     claudeApiKey: '',
     customClaudeInstructions: '',
     customAttestationTemplate: '',
@@ -185,6 +200,151 @@ const slots = { hpi: null, ap: null };
 
 function getExamSlot() {
     return store.get('examDotPhrase') || '';
+}
+
+// ── Criteria library ────────────────────────────────────────────────────────
+// Cache: %APPDATA%\MedicalNoteAttestor\library.json (macOS: ~/Library/Application Support/...).
+// Snapshot: resources/library.snapshot.json, downloaded by CI and bundled in the asar.
+
+function libraryCacheDir() {
+    return path.join(app.getPath('appData'), 'MedicalNoteAttestor');
+}
+
+function getLibraryToken() {
+    const enc = store.get('libraryTokenEnc');
+    if (!enc) return '';
+    try {
+        if (!safeStorage.isEncryptionAvailable()) return '';
+        return safeStorage.decryptString(Buffer.from(enc, 'base64'));
+    } catch (e) {
+        console.error('library: stored token could not be decrypted');
+        return '';
+    }
+}
+
+let libraryClient = null;
+function getLibraryClient() {
+    if (!libraryClient) {
+        libraryClient = createLibraryClient({
+            fetchImpl: (url, opts) => net.fetch(url, opts),   // system proxy settings apply
+            cacheDir: libraryCacheDir(),
+            snapshotPath: path.join(__dirname, 'resources', 'library.snapshot.json'),
+            getToken: getLibraryToken,
+            log: (m) => console.log(m)
+        });
+    }
+    return libraryClient;
+}
+
+let _composedStore = null;
+function composedStore() {
+    if (!_composedStore) _composedStore = createComposedStore(getAhkPaths().dir);
+    return _composedStore;
+}
+
+let lastComposed = null;   // { captureTs, exam, ap } for the current capture
+let currentCaptureTs = null;
+
+function effectiveExam() {
+    return (lastComposed && lastComposed.captureTs === currentCaptureTs && lastComposed.exam) || getExamSlot();
+}
+function effectiveAp() {
+    return (lastComposed && lastComposed.captureTs === currentCaptureTs && lastComposed.ap) || slots.ap;
+}
+function libraryUiState() {
+    const st = getLibraryClient().status();
+    return { enabled: !!store.get('libraryEnabled'), source: st.source, tag: st.tag,
+             composed: !!(lastComposed && lastComposed.captureTs === currentCaptureTs) };
+}
+
+const captureFlow = createCaptureFlow({
+    getBundle: () => getLibraryClient().bundle(),
+    isEnabled: () => !!store.get('libraryEnabled'),
+    getRecents: () => store.get('payerRecents') || [],
+    setRecents: (r) => store.set('payerRecents', r),
+    getInsertion: () => store.get('libraryInsertion') || 'end',
+    ui: openPicker,
+    store: { // composed files are for AHK (Windows only); lazy because the runtime dir is known after start
+        clear: () => { if (process.platform === 'win32') composedStore().clear(); },
+        write: (ts, out) => { if (process.platform === 'win32') composedStore().write(ts, out); }
+    },
+    onComposed: (c) => { lastComposed = c; sendSlotState(); }
+});
+
+function startLibraryFlow(source, captureTs) {
+    currentCaptureTs = captureTs;
+    lastComposed = null;
+    captureFlow.onCapture({ source, captureTs, ap: slots.ap, exam: getExamSlot() })
+        .then(r => { if (r && r.skipped && r.reason !== 'superseded') sendSlotState(); })
+        .catch(e => console.error('library flow failed:', e.message));
+}
+
+// ── Payer / procedure picker ────────────────────────────────────────────────
+
+let pickerWindow = null;
+let pickerResolve = null;
+
+function closePicker(result) {
+    const resolve = pickerResolve;
+    pickerResolve = null;
+    if (pickerWindow && !pickerWindow.isDestroyed()) pickerWindow.destroy();
+    pickerWindow = null;
+    if (resolve) resolve(result || null);
+}
+
+function openPicker(request) {
+    closePicker(null); // a newer capture replaces an open picker (old one = Skip)
+    return new Promise((resolve) => {
+        pickerResolve = resolve;
+        pickerWindow = new BrowserWindow({
+            width: 520, height: 470, minWidth: 420, minHeight: 320,
+            alwaysOnTop: true, show: false, skipTaskbar: false, minimizable: false, maximizable: false,
+            title: 'Medical Note Attestor - payer & procedures',
+            webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'picker-preload.js') }
+        });
+        pickerWindow.setMenu(null);
+        pickerWindow.setAlwaysOnTop(true, 'floating');
+        pickerWindow.loadFile(path.join(__dirname, 'picker.html'));
+        pickerWindow.webContents.once('did-finish-load', () => {
+            if (!pickerWindow) return;
+            pickerWindow.webContents.send('picker-init', {
+                source: request.source,
+                bundle: request.bundle,
+                detection: request.detection,
+                recents: request.recents,
+                sessionLastPayer: request.sessionLastPayer
+            });
+            pickerWindow.show();
+            pickerWindow.focus();
+        });
+        pickerWindow.on('closed', () => { pickerWindow = null; if (pickerResolve) closePicker(null); });
+    });
+}
+
+ipcMain.on('picker-done', (e, answer) => {
+    if (!pickerWindow || e.sender !== pickerWindow.webContents) return;
+    closePicker(answer && answer.payerId ? { payerId: String(answer.payerId), items: Array.isArray(answer.items) ? answer.items : [] } : null);
+});
+
+// ── Hotkeys (configurable; defaults F8/F9/F10/F11 unchanged) ────────────────
+// Stored as canonical strings ("Ctrl+Shift+F10") under the existing config keys.
+// Windows: AHK owns the hotkeys and re-reads hotkeys.json (250 ms poll).
+
+const HOTKEY_KEYS = { capture: 'captureHotkey', pasteHpi: 'pasteHotkey1', pasteExam: 'pasteHotkey2', pasteAp: 'pasteHotkey3' };
+
+function currentHotkeys() {
+    const raw = {};
+    for (const [action, key] of Object.entries(HOTKEY_KEYS)) raw[action] = store.get(key);
+    return core.validateHotkeys(raw, process.platform).bindings;
+}
+
+function writeHotkeysJson() {
+    if (process.platform !== 'win32') return;
+    const b = currentHotkeys();
+    const out = { version: 1, written_at: new Date().toISOString(), accelerators: b };
+    for (const action of Object.keys(HOTKEY_KEYS)) out['ahk_' + action] = core.toAhkHotkey(b[action]);
+    try { writeUtf8NoBom(path.join(getAhkPaths().dir, 'hotkeys.json'), JSON.stringify(out, null, 2)); }
+    catch (e) { console.error('Failed to write hotkeys.json:', e.message); }
 }
 
 let mainWindow;
@@ -322,10 +482,11 @@ function registerHotkeys() {
     try {
         globalShortcut.unregisterAll();
 
-        const captureKey = store.get('captureHotkey') || 'F8';
-        const paste1Key  = store.get('pasteHotkey1')  || 'F9';
-        const paste2Key  = store.get('pasteHotkey2')  || 'F10';
-        const paste3Key  = store.get('pasteHotkey3')  || 'F11';
+        const hk = currentHotkeys();
+        const captureKey = hk.capture;
+        const paste1Key  = hk.pasteHpi;
+        const paste2Key  = hk.pasteExam;
+        const paste3Key  = hk.pasteAp;
         const hpiKey     = store.get('hpiHotkey')     || 'PageUp';
         const apKey      = store.get('apHotkey')      || 'PageDown';
 
@@ -459,6 +620,7 @@ async function performCapture() {
     slots.hpi = extractHPI(text) || null;
     slots.ap  = extractAP(text)  || null;
     const exam = getExamSlot();
+    if (slots.ap || slots.hpi) startLibraryFlow('heidi', String(Date.now()));
 
     if (mainWindow) mainWindow.webContents.send('capture-result', {
         success: true,
@@ -488,8 +650,8 @@ async function performCapture() {
 function pasteSlot(slotName) {
     let content;
     if      (slotName === 'hpi')  content = slots.hpi;
-    else if (slotName === 'exam') content = getExamSlot();
-    else if (slotName === 'ap')   content = slots.ap;
+    else if (slotName === 'exam') content = effectiveExam();
+    else if (slotName === 'ap')   content = effectiveAp();
 
     if (content && content.trim()) {
         clipboard.writeText(content);
@@ -669,17 +831,51 @@ ipcMain.handle('get-app-info', () => ({
     commit:    BUILD_INFO.commit,
     builtAt:   BUILD_INFO.builtAt,
     runNumber: BUILD_INFO.runNumber,
-    model:     CLAUDE_MODEL
+    model:     CLAUDE_MODEL,
+    librarySnapshot: getLibraryClient().snapshotTag(),
+    hotkeys:   currentHotkeys()
 }));
+
+// Criteria library settings. The token is write-only from the renderer's side.
+function libraryStatusForUi() {
+    return { ...getLibraryClient().status(), hasToken: !!store.get('libraryTokenEnc'),
+             encryptionAvailable: safeStorage.isEncryptionAvailable(),
+             enabled: !!store.get('libraryEnabled'), insertion: store.get('libraryInsertion') || 'end',
+             snapshotTag: getLibraryClient().snapshotTag() };
+}
+ipcMain.handle('library-status', () => libraryStatusForUi());
+ipcMain.handle('library-refresh', async () => { await getLibraryClient().refresh({ force: true }); sendSlotState(); return libraryStatusForUi(); });
+ipcMain.handle('library-set-token', async (e, token) => {
+    const t = String(token || '').trim();
+    if (!t) { store.set('libraryTokenEnc', ''); return libraryStatusForUi(); }
+    if (!safeStorage.isEncryptionAvailable()) return { ...libraryStatusForUi(), error: 'Secure storage unavailable; token not saved' };
+    store.set('libraryTokenEnc', safeStorage.encryptString(t).toString('base64'));
+    await getLibraryClient().refresh({ force: true });
+    return libraryStatusForUi();
+});
+ipcMain.handle('library-set-options', (e, o) => {
+    if (o && typeof o.enabled === 'boolean') store.set('libraryEnabled', o.enabled);
+    if (o && (o.insertion === 'end' || o.insertion === 'after_plan_line')) store.set('libraryInsertion', o.insertion);
+    sendSlotState();
+    return libraryStatusForUi();
+});
+
+ipcMain.handle('get-hotkeys', () => ({ bindings: currentHotkeys(), defaults: core.defaultHotkeys(),
+    actions: core.HOTKEY_ACTIONS.map(a => ({ id: a.id, label: a.label })), platform: process.platform }));
+ipcMain.handle('save-hotkeys', (e, bindings) => {
+    const v = core.validateHotkeys(bindings || {}, process.platform);
+    if (!v.ok) return v;
+    for (const [action, key] of Object.entries(HOTKEY_KEYS)) store.set(key, v.bindings[action]);
+    writeHotkeysJson();
+    registerHotkeys();
+    sendSlotState();
+    return v;
+});
 
 ipcMain.handle('save-settings', (e, settings) => {
     store.set('hpiHotkey',                settings.hpiHotkey);
     store.set('apHotkey',                 settings.apHotkey);
     store.set('heidiCopyEnabled',         settings.heidiCopyEnabled);
-    store.set('captureHotkey',            settings.captureHotkey);
-    store.set('pasteHotkey1',             settings.pasteHotkey1);
-    store.set('pasteHotkey2',             settings.pasteHotkey2);
-    store.set('pasteHotkey3',             settings.pasteHotkey3);
     store.set('examDotPhrase',            settings.examDotPhrase);
     store.set('claudeApiKey',             settings.claudeApiKey);
     store.set('customClaudeInstructions', settings.customClaudeInstructions);
@@ -751,7 +947,7 @@ ipcMain.handle('set-window-collapsed', (event, collapsed) => {
 ipcMain.handle('open-settings', () => { openSettings(); return true; });
 ipcMain.handle('trigger-capture', async () => { await performCapture(); return true; });
 ipcMain.handle('paste-slot', (e, name) => { pasteSlot(name); return true; });
-ipcMain.handle('clear-slots', () => { slots.hpi = null; slots.ap = null; return true; });
+ipcMain.handle('clear-slots', () => { slots.hpi = null; slots.ap = null; lastComposed = null; currentCaptureTs = null; captureFlow.reset(); return true; });
 ipcMain.handle('save-exam-dot-phrase', (e, text) => {
     store.set('examDotPhrase', text); return true;
 });
@@ -948,6 +1144,9 @@ function migrateHotkeys() {
         const current = store.get(key);
         if (!current || altKeys.includes(current)) { store.set(key, defaultVal); }
     }
+    // Invalid stored bindings fall back to defaults (validateHotkeys fills them).
+    const v = currentHotkeys();
+    for (const [action, key] of Object.entries(HOTKEY_KEYS)) if (store.get(key) !== v[action]) store.set(key, v[action]);
 }
 migrateHotkeys();
 
@@ -955,8 +1154,13 @@ app.whenReady().then(() => {
     try {
         createMainWindow();
         registerHotkeys();
+        getLibraryClient().loadLocal();
+        getLibraryClient().refresh().then(() => sendSlotState());
+        getLibraryClient().startAutoRefresh();
         if (process.platform === 'win32') {
+            composedStore().clear();
             writeAhkConfig(store.get('examDotPhrase') || '');
+            writeHotkeysJson();
             launchAHK();
             watchSlotsFile();
         }
