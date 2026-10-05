@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1B33B5152B259FD9EC9EB100 /* Hotkeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BF60C345D22C7CD01EA2FFF /* Hotkeys.swift */; };
+		2573FD71FA3B83821DDDB21C /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F66F05A2A96EE295D9072DB /* LibraryStore.swift */; };
 		A1000001233456780000001A /* MedicalNoteAttestorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233456780000000A /* MedicalNoteAttestorApp.swift */; };
 		A1000001233456780000001B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233456780000000B /* ContentView.swift */; };
 		A1000001233456780000001C /* AttestorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233456780000000C /* AttestorViewModel.swift */; };
@@ -21,9 +23,17 @@
 		A10000012334567800000025 /* HeidiSlotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000012334567800000017 /* HeidiSlotManager.swift */; };
 		A10000012334567800000026 /* HeidiTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000012334567800000018 /* HeidiTabView.swift */; };
 		A10000012334567800000027 /* AttestorTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000012334567800000019 /* AttestorTabView.swift */; };
+		B29A834154522DAA9999FCF0 /* MNACore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A85BE79E7BCCC8FC191605D /* MNACore.swift */; };
+		D9DCEC702EC4EF860D5646E0 /* mna-core.js in Resources */ = {isa = PBXBuildFile; fileRef = 9C924A997C4DA6CB1C0E55BF /* mna-core.js */; };
+		E029ED358996F37BA4361ECD /* PayerPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0594EED91AAB9D077CF0B8C3 /* PayerPicker.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0594EED91AAB9D077CF0B8C3 /* PayerPicker.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PayerPicker.swift; sourceTree = "<group>"; };
+		7F66F05A2A96EE295D9072DB /* LibraryStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
+		8A85BE79E7BCCC8FC191605D /* MNACore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MNACore.swift; sourceTree = "<group>"; };
+		8BF60C345D22C7CD01EA2FFF /* Hotkeys.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Hotkeys.swift; sourceTree = "<group>"; };
+		9C924A997C4DA6CB1C0E55BF /* mna-core.js */ = {isa = PBXFileReference; includeInIndex = 1; name = "mna-core.js"; path = "lib/mna-core.js"; sourceTree = SOURCE_ROOT; };
 		A10000012334567800000001 /* MedicalNoteAttestor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MedicalNoteAttestor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1000001233456780000000A /* MedicalNoteAttestorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicalNoteAttestorApp.swift; sourceTree = "<group>"; };
 		A1000001233456780000000B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -59,6 +69,7 @@
 			children = (
 				A10000012334567800000004 /* MedicalNoteAttestor */,
 				A10000012334567800000005 /* Products */,
+				9C924A997C4DA6CB1C0E55BF /* mna-core.js */,
 			);
 			sourceTree = "<group>";
 		};
@@ -81,6 +92,10 @@
 				A10000012334567800000011 /* Assets.xcassets */,
 				A10000012334567800000012 /* Info.plist */,
 				A10000012334567800000013 /* MedicalNoteAttestor.entitlements */,
+				8A85BE79E7BCCC8FC191605D /* MNACore.swift */,
+				8BF60C345D22C7CD01EA2FFF /* Hotkeys.swift */,
+				7F66F05A2A96EE295D9072DB /* LibraryStore.swift */,
+				0594EED91AAB9D077CF0B8C3 /* PayerPicker.swift */,
 			);
 			path = MedicalNoteAttestor;
 			sourceTree = "<group>";
@@ -103,6 +118,7 @@
 				A10000012334567800000007 /* Sources */,
 				A10000012334567800000002 /* Frameworks */,
 				A10000012334567800000008 /* Resources */,
+				387839169DF359D8EFD6209B /* Embed criteria library snapshot */,
 			);
 			buildRules = (
 			);
@@ -152,10 +168,33 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000012334567800000021 /* Assets.xcassets in Resources */,
+				D9DCEC702EC4EF860D5646E0 /* mna-core.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		387839169DF359D8EFD6209B /* Embed criteria library snapshot */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed criteria library snapshot";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Copies the criteria-library snapshot (downloaded by scripts/build-macos.sh) into the app\n# bundle if present. Builds without a snapshot still succeed (the app then uses its cache).\nSNAP=\"${SRCROOT}/resources/library.snapshot.json\"\nDEST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/library.snapshot.json\"\nif [ -f \"$SNAP\" ]; then cp \"$SNAP\" \"$DEST\"; echo \"Embedded library snapshot\"; else rm -f \"$DEST\"; echo \"No library snapshot to embed\"; fi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A10000012334567800000007 /* Sources */ = {
@@ -175,6 +214,10 @@
 				A10000012334567800000025 /* HeidiSlotManager.swift in Sources */,
 				A10000012334567800000026 /* HeidiTabView.swift in Sources */,
 				A10000012334567800000027 /* AttestorTabView.swift in Sources */,
+				B29A834154522DAA9999FCF0 /* MNACore.swift in Sources */,
+				1B33B5152B259FD9EC9EB100 /* Hotkeys.swift in Sources */,
+				2573FD71FA3B83821DDDB21C /* LibraryStore.swift in Sources */,
+				E029ED358996F37BA4361ECD /* PayerPicker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -309,6 +352,7 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MedicalNoteAttestor/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -337,6 +381,7 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MedicalNoteAttestor/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";

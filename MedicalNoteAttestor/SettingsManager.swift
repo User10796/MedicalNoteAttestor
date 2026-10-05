@@ -1,65 +1,29 @@
 import Foundation
 import Carbon
 
-/// Hotkey options for the Heidi copy feature
-enum HotkeyOption: String, CaseIterable, Identifiable {
-    case pageUp = "Page Up"
-    case pageDown = "Page Down"
-    case f5 = "F5"
-    case f6 = "F6"
-    case f7 = "F7"
-    case f8 = "F8"
-    case f9 = "F9"
-    case f10 = "F10"
-    case f11 = "F11"
-    case f12 = "F12"
-
-    var id: String { rawValue }
-
-    var keyCode: UInt32 {
-        switch self {
-        case .pageUp: return UInt32(kVK_PageUp)
-        case .pageDown: return UInt32(kVK_PageDown)
-        case .f5: return UInt32(kVK_F5)
-        case .f6: return UInt32(kVK_F6)
-        case .f7: return UInt32(kVK_F7)
-        case .f8: return UInt32(kVK_F8)
-        case .f9: return UInt32(kVK_F9)
-        case .f10: return UInt32(kVK_F10)
-        case .f11: return UInt32(kVK_F11)
-        case .f12: return UInt32(kVK_F12)
-        }
-    }
-}
-
 class SettingsManager: ObservableObject {
     static let shared = SettingsManager()
 
     // UserDefaults keys
     private let customClaudeInstructionsKey = "customClaudeInstructions"
     private let customAttestationTemplateKey = "customAttestationTemplate"
-    private let captureHotkeyKey  = "captureHotkey"
-    private let pasteHotkey1Key   = "pasteHotkey1"
-    private let pasteHotkey2Key   = "pasteHotkey2"
-    private let pasteHotkey3Key   = "pasteHotkey3"
     private let captureDelayKey   = "captureDelay"
     private let claudeAPIKeyKey   = "claudeAPIKey"
 
-    // Published properties for SwiftUI binding
-    @Published var captureHotkey: HotkeyOption {
-        didSet { UserDefaults.standard.set(captureHotkey.rawValue, forKey: captureHotkeyKey) }
-    }
+    // Active hotkey bindings for display ("F8", "Ctrl+Shift+F10"). Read-only here: Settings saves
+    // through AppDelegate.hotkeys (validated), and these refresh on every UserDefaults change.
+    @Published private(set) var captureHotkey: String = "F8"
+    @Published private(set) var pasteHotkey1: String = "F9"
+    @Published private(set) var pasteHotkey2: String = "F10"
+    @Published private(set) var pasteHotkey3: String = "F11"
+    private var defaultsObserver: NSObjectProtocol?
 
-    @Published var pasteHotkey1: HotkeyOption {
-        didSet { UserDefaults.standard.set(pasteHotkey1.rawValue, forKey: pasteHotkey1Key) }
-    }
-
-    @Published var pasteHotkey2: HotkeyOption {
-        didSet { UserDefaults.standard.set(pasteHotkey2.rawValue, forKey: pasteHotkey2Key) }
-    }
-
-    @Published var pasteHotkey3: HotkeyOption {
-        didSet { UserDefaults.standard.set(pasteHotkey3.rawValue, forKey: pasteHotkey3Key) }
+    func refreshHotkeyLabels() {
+        let b = HotkeyManager(registrar: NoopRegistrar()).bindings()
+        if captureHotkey != b[.capture] { captureHotkey = b[.capture] ?? "F8" }
+        if pasteHotkey1 != b[.pasteHpi] { pasteHotkey1 = b[.pasteHpi] ?? "F9" }
+        if pasteHotkey2 != b[.pasteExam] { pasteHotkey2 = b[.pasteExam] ?? "F10" }
+        if pasteHotkey3 != b[.pasteAp] { pasteHotkey3 = b[.pasteAp] ?? "F11" }
     }
 
     @Published var captureDelay: Double {
@@ -105,19 +69,17 @@ Plan:
         }
 
         // Load saved values or use defaults
-        captureHotkey = UserDefaults.standard.string(forKey: captureHotkeyKey)
-            .flatMap(HotkeyOption.init(rawValue:)) ?? .f8
-        pasteHotkey1  = UserDefaults.standard.string(forKey: pasteHotkey1Key)
-            .flatMap(HotkeyOption.init(rawValue:)) ?? .f9
-        pasteHotkey2  = UserDefaults.standard.string(forKey: pasteHotkey2Key)
-            .flatMap(HotkeyOption.init(rawValue:)) ?? .f10
-        pasteHotkey3  = UserDefaults.standard.string(forKey: pasteHotkey3Key)
-            .flatMap(HotkeyOption.init(rawValue:)) ?? .f11
         captureDelay  = UserDefaults.standard.object(forKey: captureDelayKey) as? Double ?? 0.7
         claudeAPIKey  = UserDefaults.standard.string(forKey: claudeAPIKeyKey) ?? ""
 
         self.customClaudeInstructions = UserDefaults.standard.string(forKey: customClaudeInstructionsKey) ?? ""
         self.customAttestationTemplate = UserDefaults.standard.string(forKey: customAttestationTemplateKey) ?? ""
+
+        refreshHotkeyLabels()
+        defaultsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification,
+                                                                  object: nil, queue: .main) { [weak self] _ in
+            self?.refreshHotkeyLabels()
+        }
     }
 
     /// Get the effective attestation template (custom or default)

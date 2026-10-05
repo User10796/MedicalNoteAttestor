@@ -15,3 +15,10 @@
 - No PHI leaves the machine except the pre-existing, user-initiated Claude API calls. Never log note text.
 - Tokens/keys: never print, log, commit, or build them into binaries.
 - Windows `.exe` goes to Google Drive; never overwrite the canonical file without confirmation.
+- Criteria library integration: shared core `lib/mna-core.js` (detection, composition, payer search, hotkey
+  validation) runs in Electron and, via JavaScriptCore, in the Swift app (`MNACore.swift`). Change it once,
+  test it once: `npm test` (Node) and `scripts/test-swift.sh` (same fixtures through JavaScriptCore).
+- Windows composed output for AHK: `mna-exam.txt` / `mna-ap.txt` in the runtime dir, header `MNA1 <captureTs>`;
+  AHK pastes them only for the capture it holds. Hotkeys: Electron writes `hotkeys.json`, AHK polls it (250 ms).
+- macOS release build: `scripts/build-macos.sh` (embeds the library snapshot + build stamp, DMG in `dist/`).
+- Test harness for the picker UI: serve the repo root statically and open `test/ui/picker-harness.html`.
