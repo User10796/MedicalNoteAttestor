@@ -42,7 +42,8 @@
         "to": "autohotkey/",
         "filter": [
           "AutoHotkey64.exe",
-          "heidi-hotkeys.ahk"
+          "heidi-hotkeys.ahk",
+          "mna-lib.ahk"
         ]
       }
     ],
@@ -62,7 +63,9 @@
       "!CLAUDE.md",
       "!SPEC_*.md",
       "!MedicalNoteAttestor/**",
-      "!MedicalNoteAttestor.xcodeproj/**"
+      "!MedicalNoteAttestor.xcodeproj/**",
+      "!resources/.gitkeep",
+      "!scripts/**"
     ]
   }
 }

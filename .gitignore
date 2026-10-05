@@ -28,3 +28,6 @@ MedicalNoteAttestor-Windows/dist/
 
 # Generated at build time
 build-info.json
+
+# Criteria library snapshot (downloaded at build time; see scripts/stamp-library-snapshot.js)
+resources/library.snapshot.json

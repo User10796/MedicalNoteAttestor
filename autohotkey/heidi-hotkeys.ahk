@@ -7,12 +7,22 @@
 global slotHPI := ""
 global slotAP  := ""
 global examDotPhrase := ""
+global lastCaptureTs := ""          ; A_TickCount of the capture these slots belong to
+global activeHotkeys := Map()       ; action -> AHK key currently registered
+global lastHotkeysText := "<unread>"
 global HPI_HEADERS := ["Interval history, HPI:", "History of Present Illness (HPI):", "History of Present Illness:"]
 global AP_HEADERS  := ["Assessment and Plan:", "Assessment and plan:", "Assessment & Plan:", "Assessment/Plan:", "A&P:", "A/P:"]
+
+#Include %A_ScriptDir%\mna-lib.ahk
 
 ; ── Load config on startup ────────────────────────────────────────────────────
 
 LoadConfig()
+
+; Configurable hotkeys (Settings > Hotkeys). Electron writes hotkeys.json; we poll it every
+; 250 ms (change notifications don't fire on UNC paths) and re-register on change.
+CheckHotkeysFile()
+SetTimer(CheckHotkeysFile, 250)
 
 ; ── Hotkeys ───────────────────────────────────────────────────────────────────
 
@@ -34,19 +44,23 @@ PgDn:: {
         A_Clipboard := extracted
 }
 
-F8:: {
-    global slotHPI, slotAP
+; F8-F11 defaults are registered dynamically (see ApplyHotkeys); the legacy PgUp/PgDn above stay fixed.
+
+DoCapture() {
+    global slotHPI, slotAP, lastCaptureTs
     LoadConfig()
     A_Clipboard := ""
     Send "^a^c"
     ClipWait 2
     text := A_Clipboard
     if (text = "") {
+        lastCaptureTs := ""   ; a failed capture must never pick up library text composed for the previous one
         SoundBeep 300, 200
         return
     }
     slotHPI := ExtractHPI(text)
     slotAP  := ExtractAP(text)
+    lastCaptureTs := A_TickCount
     A_Clipboard := text
     WriteSlots()
     if (slotHPI != "" && slotAP != "") {
@@ -60,7 +74,7 @@ F8:: {
     }
 }
 
-F9:: {
+DoPasteHpi() {
     global slotHPI
     if (slotHPI = "") {
         SoundBeep 300, 200
@@ -69,8 +83,15 @@ F9:: {
     PasteText(slotHPI)
 }
 
-F10:: {
-    global examDotPhrase
+; Exam: library-composed text for this capture if Sterling confirmed a payer/procedure,
+; otherwise exactly today's behavior (exam dot-phrase, or a beep when it's empty).
+DoPasteExam() {
+    global examDotPhrase, lastCaptureTs
+    composed := MnaReadComposed(GetRuntimeDir() "\mna-exam.txt", lastCaptureTs)
+    if (composed != "") {
+        PasteText(composed)
+        return
+    }
     if (examDotPhrase = "") {
         SoundBeep 300, 200
         return
@@ -78,13 +99,75 @@ F10:: {
     PasteText(examDotPhrase)
 }
 
-F11:: {
-    global slotAP
+; A&P: A&P + library dot-phrase(s) for this capture if confirmed, otherwise today's A&P.
+DoPasteAp() {
+    global slotAP, lastCaptureTs
+    composed := MnaReadComposed(GetRuntimeDir() "\mna-ap.txt", lastCaptureTs)
+    if (composed != "") {
+        PasteText(composed)
+        return
+    }
     if (slotAP = "") {
         SoundBeep 300, 200
         return
     }
     PasteText(slotAP)
+}
+
+RunAction(action) {
+    switch action {
+        case "capture":   DoCapture()
+        case "pasteHpi":  DoPasteHpi()
+        case "pasteExam": DoPasteExam()
+        case "pasteAp":   DoPasteAp()
+    }
+}
+
+; A factory so each hotkey's closure captures its own action (not the loop variable).
+MakeHandler(action) {
+    return (*) => RunAction(action)
+}
+
+; Register `bindings` (action -> AHK key). If any key fails, fall back to the defaults.
+ApplyHotkeys(bindings, isFallback := false) {
+    global activeHotkeys
+    for action, key in activeHotkeys {
+        try Hotkey(key, "Off")
+    }
+    activeHotkeys := Map()
+    for action, key in bindings {
+        try {
+            Hotkey(key, MakeHandler(action), "On")
+            activeHotkeys[action] := key
+        } catch as e {
+            MnaLog(GetRuntimeDir(), "hotkey " action "=" key " failed to register (" e.Message ")")
+            if !isFallback {
+                MnaLog(GetRuntimeDir(), "using default hotkeys F8/F9/F10/F11")
+                ApplyHotkeys(MnaDefaultHotkeys(), true)
+            }
+            return
+        }
+    }
+}
+
+CheckHotkeysFile() {
+    global lastHotkeysText
+    path := GetRuntimeDir() "\hotkeys.json"
+    text := ""
+    if FileExist(path) {
+        try text := FileRead(path, "UTF-8")
+        catch
+            return   ; mid-write; try again in 250 ms
+    }
+    if (text = lastHotkeysText)
+        return
+    lastHotkeysText := text
+    bindings := text = "" ? "" : MnaParseHotkeysJson(text)
+    if !IsObject(bindings) {
+        MnaLog(GetRuntimeDir(), (text = "" ? "hotkeys.json missing" : "hotkeys.json invalid") "; using defaults F8/F9/F10/F11")
+        bindings := MnaDefaultHotkeys()
+    }
+    ApplyHotkeys(bindings)
 }
 
 
@@ -163,10 +246,10 @@ GetRuntimeDir() {
 }
 
 WriteSlots() {
-    global slotHPI, slotAP
+    global slotHPI, slotAP, lastCaptureTs
     runtimeDir := GetRuntimeDir()
     slotsPath := runtimeDir "\heidi-slots.json"
-    ts := A_TickCount
+    ts := lastCaptureTs
     json := '{"hpi":"' . JsonEscape(slotHPI) . '","ap":"' . JsonEscape(slotAP) . '","timestamp":' . ts . '}'
     try {
         FileDelete slotsPath

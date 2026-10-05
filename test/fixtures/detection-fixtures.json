@@ -1,0 +1,324 @@
+{
+ "_comment": "De-identified, synthetic A&P snippets. expect: planned rows (checked); suggest: unchecked suggestions. Laterality/region only asserted when given.",
+ "cases": [
+  {
+   "ap": "Proceed with bilateral L4-5, L5-S1 medial branch blocks.",
+   "expect": [
+    {
+     "id": "lumbar_mbb",
+     "lat": "bilateral",
+     "region": "lumbar"
+    }
+   ]
+  },
+  {
+   "ap": "Schedule right SIJ injection.",
+   "expect": [
+    {
+     "id": "sij_injection",
+     "lat": "right"
+    }
+   ]
+  },
+  {
+   "ap": "Submit for SCS trial.",
+   "expect": [
+    {
+     "id": "scs_trial",
+     "lat": "midline",
+     "needsVariant": true
+    }
+   ]
+  },
+  {
+   "ap": "Patient is s/p RFA 2024 with good relief.",
+   "expect": []
+  },
+  {
+   "ap": "Previously had ESI with minimal relief.",
+   "expect": []
+  },
+  {
+   "ap": "Will proceed with left L5-S1 TFESI.",
+   "expect": [
+    {
+     "id": "lumbar_tfesi",
+     "lat": "left",
+     "region": "lumbar"
+    }
+   ]
+  },
+  {
+   "ap": "Plan: proceed with bilateral L4-5 MBB and right SI joint injection.",
+   "expect": [
+    {
+     "id": "lumbar_mbb",
+     "lat": "bilateral"
+    },
+    {
+     "id": "sij_injection",
+     "lat": "right"
+    }
+   ]
+  },
+  {
+   "ap": "Schedule cervical medial branch blocks at C5-6 and C6-7 on the right.",
+   "expect": [
+    {
+     "id": "cervical_mbb",
+     "lat": "right",
+     "region": "cervical"
+    }
+   ]
+  },
+  {
+   "ap": "Recommend repeat bilateral L4-5 and L5-S1 radiofrequency ablation given 80% relief with prior MBB.",
+   "expect": [
+    {
+     "id": "lumbar_rfa",
+     "lat": "bilateral"
+    }
+   ]
+  },
+  {
+   "ap": "Low back pain, lumbar spondylosis. Continue meloxicam 15 mg daily.",
+   "expect": []
+  },
+  {
+   "ap": "Proceed with L4-5 interlaminar ESI.",
+   "expect": [
+    {
+     "id": "lumbar_ilesi",
+     "lat": "midline",
+     "region": "lumbar"
+    }
+   ]
+  },
+  {
+   "ap": "Schedule R L5-S1 TFESI.",
+   "expect": [
+    {
+     "id": "lumbar_tfesi",
+     "lat": "right"
+    }
+   ]
+  },
+  {
+   "ap": "Proceed with L L4-5 TFESI.",
+   "expect": [
+    {
+     "id": "lumbar_tfesi",
+     "lat": "left"
+    }
+   ]
+  },
+  {
+   "ap": "Submit for spinal cord stimulator trial for failed back surgery syndrome.",
+   "expect": [
+    {
+     "id": "scs_trial"
+    }
+   ]
+  },
+  {
+   "ap": "S/p SCS trial with 70% relief; submit for permanent spinal cord stimulator implant.",
+   "expect": [
+    {
+     "id": "scs_implant"
+    }
+   ]
+  },
+  {
+   "ap": "Hx of right SI joint injection 2023. Will proceed with bilateral sacroiliac joint injections.",
+   "expect": [
+    {
+     "id": "sij_injection",
+     "lat": "bilateral"
+    }
+   ]
+  },
+  {
+   "ap": "Consider TFESI in the future if radicular symptoms persist.",
+   "expect": [],
+   "suggest": [
+    "lumbar_tfesi"
+   ]
+  },
+  {
+   "ap": "Lumbar MBB discussed with patient.",
+   "expect": [],
+   "suggest": [
+    "lumbar_mbb"
+   ]
+  },
+  {
+   "ap": "Proceed with bilateral greater trochanteric bursa injections.",
+   "expect": [
+    {
+     "id": "gtps_injection",
+     "lat": "bilateral"
+    }
+   ]
+  },
+  {
+   "ap": "Schedule left knee injection.",
+   "expect": [
+    {
+     "id": "knee_ia",
+     "lat": "left"
+    }
+   ]
+  },
+  {
+   "ap": "Patient declines ESI at this time.",
+   "expect": []
+  },
+  {
+   "ap": "Order bilateral C5-6 TFESI.",
+   "expect": [
+    {
+     "id": "cervical_tfesi",
+     "lat": "bilateral",
+     "region": "cervical"
+    }
+   ]
+  },
+  {
+   "ap": "Proceed with thoracic medial branch block at T7-8 on the left.",
+   "expect": [
+    {
+     "id": "thoracic_mbb",
+     "lat": "left",
+     "region": "thoracic"
+    }
+   ]
+  },
+  {
+   "ap": "Proceed with RFA.",
+   "expect": [
+    {
+     "id": "lumbar_rfa",
+     "lat": "bilateral"
+    }
+   ]
+  },
+  {
+   "ap": "Will schedule caudal ESI.",
+   "expect": [
+    {
+     "id": "lumbar_ilesi",
+     "lat": "midline"
+    }
+   ]
+  },
+  {
+   "ap": "Proceed with bilateral L3-4, L4-5 facet blocks; also schedule right hip injection.",
+   "expect": [
+    {
+     "id": "lumbar_mbb",
+     "lat": "bilateral"
+    },
+    {
+     "id": "hip_ia",
+     "lat": "right"
+    }
+   ]
+  },
+  {
+   "ap": "Submit for prior authorization for bilateral L4-5 MBB.",
+   "expect": [
+    {
+     "id": "lumbar_mbb",
+     "lat": "bilateral"
+    }
+   ]
+  },
+  {
+   "ap": "She had good relief from her last RFA in 2023 and would like to repeat it.",
+   "expect": []
+  },
+  {
+   "ap": "Proceed with right suprascapular nerve block.",
+   "expect": [
+    {
+     "id": "suprascapular_nb",
+     "lat": "right"
+    }
+   ]
+  },
+  {
+   "ap": "Assessment:\n1. Lumbar spondylosis without myelopathy\n2. Chronic low back pain\nPlan:\n- Proceed with bilateral L4-5, L5-S1 MBB\n- s/p right SIJ injection 6/2024 with relief\n- Return to clinic in 4 weeks",
+   "expect": [
+    {
+     "id": "lumbar_mbb",
+     "lat": "bilateral"
+    }
+   ]
+  },
+  {
+   "ap": "Proceed with trigger point injections to the lumbar paraspinals.",
+   "expect": [
+    {
+     "id": "tpi",
+     "lat": "bilateral"
+    }
+   ]
+  },
+  {
+   "ap": "Lumbar radiculopathy L5. Plan to proceed with left L4-5 and L5-S1 transforaminal epidural steroid injections.",
+   "expect": [
+    {
+     "id": "lumbar_tfesi",
+     "lat": "left"
+    }
+   ]
+  },
+  {
+   "ap": "Lumbar ESI is not recommended given anticoagulation.",
+   "expect": []
+  },
+  {
+   "ap": "RFA was not ordered due to lack of response to MBB.",
+   "expect": []
+  },
+  {
+   "ap": "We do not recommend SCS at this time.",
+   "expect": []
+  },
+  {
+   "ap": "Recommend against MBB.",
+   "expect": []
+  },
+  {
+   "ap": "Plan: no injections at this time, ESI not indicated.",
+   "expect": []
+  },
+  {
+   "ap": "Proceed with bilateral L4-5 MBB, not RFA at this time.",
+   "expect": [
+    {
+     "id": "lumbar_mbb",
+     "lat": "bilateral"
+    }
+   ]
+  },
+  {
+   "ap": "Patient declines ESI but will proceed with right SIJ injection.",
+   "expect": [
+    {
+     "id": "sij_injection",
+     "lat": "right"
+    }
+   ]
+  },
+  {
+   "ap": "No ESI for now; schedule left L4-5 TFESI if pain persists.",
+   "expect": [
+    {
+     "id": "lumbar_tfesi",
+     "lat": "left"
+    }
+   ]
+  }
+ ]
+}

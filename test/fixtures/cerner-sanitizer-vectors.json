@@ -1,0 +1,16 @@
+{
+  "_comment": "Shared Cerner-sanitizer vectors. Mirrors pain-pa.com test/text.test.js cernerSafe cases; both implementations must produce `out` for `in`.",
+  "vectors": [
+    {"in": "pain ≥3 months, BMI ≤35", "out": "pain >=3 months, BMI <=35"},
+    {"in": "criteria — see policy", "out": "criteria -- see policy"},
+    {"in": "L4–L5", "out": "L4 -- L5"},
+    {"in": "“axial” and ‘facet’", "out": "\"axial\" and 'facet'"},
+    {"in": "— Patient has pain", "out": "-- Patient has pain"},
+    {"in": "Oscar doesn’t sell Medicaid — GA", "out": "Oscar doesn't sell Medicaid -- GA"},
+    {"in": "low „quote‟ and prime ′x′ ″y″", "out": "low \"quote\" and prime 'x' \"y\""},
+    {"in": "non breaking", "out": "non breaking"},
+    {"in": "-- Patient has >=50% relief x 3-6 months (L4-L5).", "out": "-- Patient has >=50% relief x 3-6 months (L4-L5)."},
+    {"in": "Positive Patrick test on the right.\n___ degrees", "out": "Positive Patrick test on the right.\n___ degrees"},
+    {"in": "", "out": ""}
+  ]
+}

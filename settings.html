@@ -181,6 +181,7 @@
         <button class="tab active" data-tab="heidi">Heidi Copy</button>
         <button class="tab" data-tab="claude">Claude API</button>
         <button class="tab" data-tab="attestation">Attestation</button>
+        <button class="tab" data-tab="library">Criteria Library</button>
     </div>
 
     <!-- Heidi Copy Tab -->
@@ -230,63 +231,18 @@
         </div>
 
         <div class="section">
-            <h2>v2 Capture &amp; Paste Hotkeys</h2>
+            <h2>Hotkeys</h2>
+            <div class="help-text" style="margin-bottom:8px">Click a box, then press the new key combination (modifiers allowed, e.g. Ctrl+Shift+F9). Changes apply immediately; no restart.</div>
+            <div id="hotkey-rows"></div>
+            <div id="hotkey-msgs"></div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="btn btn-secondary" id="hotkeys-reset" type="button">Reset to defaults</button>
+                <button class="btn btn-primary" id="hotkeys-apply" type="button">Apply hotkeys</button>
+            </div>
+        </div>
 
-            <div class="form-group">
-                <label>Capture Hotkey</label>
-                <select id="capture-hotkey">
-                    <option value="F5">F5</option>
-                    <option value="F6">F6</option>
-                    <option value="F7">F7</option>
-                    <option value="F8" selected>F8</option>
-                    <option value="F9">F9</option>
-                    <option value="F10">F10</option>
-                    <option value="F11">F11</option>
-                    <option value="F12">F12</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Paste HPI Hotkey (Slot 1)</label>
-                <select id="paste-hotkey-1">
-                    <option value="F5">F5</option>
-                    <option value="F6">F6</option>
-                    <option value="F7">F7</option>
-                    <option value="F8">F8</option>
-                    <option value="F9" selected>F9</option>
-                    <option value="F10">F10</option>
-                    <option value="F11">F11</option>
-                    <option value="F12">F12</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Paste Exam Hotkey (Slot 2)</label>
-                <select id="paste-hotkey-2">
-                    <option value="F5">F5</option>
-                    <option value="F6">F6</option>
-                    <option value="F7">F7</option>
-                    <option value="F8">F8</option>
-                    <option value="F9">F9</option>
-                    <option value="F10" selected>F10</option>
-                    <option value="F11">F11</option>
-                    <option value="F12">F12</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Paste A/P Hotkey (Slot 3)</label>
-                <select id="paste-hotkey-3">
-                    <option value="F5">F5</option>
-                    <option value="F6">F6</option>
-                    <option value="F7">F7</option>
-                    <option value="F8">F8</option>
-                    <option value="F9">F9</option>
-                    <option value="F10">F10</option>
-                    <option value="F11" selected>F11</option>
-                    <option value="F12">F12</option>
-                </select>
-            </div>
-            <div id="paste-hotkey-warning" class="warning" style="display:none;">
-                &#9888;&#65039; Paste hotkeys must all be different
-            </div>
+        <div class="section">
+            <h2>Exam Dot Phrase</h2>
             <div class="form-group">
                 <label for="exam-dot-phrase">Exam Dot Phrase (Slot 2 &mdash; F10)</label>
                 <textarea id="exam-dot-phrase" rows="6"
@@ -356,6 +312,40 @@
         </div>
     </div>
 
+    <!-- Criteria Library Tab -->
+    <div id="library-tab" class="tab-content">
+        <div class="section">
+            <h2>Criteria Library</h2>
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="lib-enabled">
+                <label for="lib-enabled">Insert library exam text (F10) and dot-phrases (F11) after capture</label>
+            </div>
+            <div class="form-group">
+                <label for="lib-insertion">Dot-phrase position in the A&amp;P paste</label>
+                <select id="lib-insertion">
+                    <option value="end">End of A&amp;P (default)</option>
+                    <option value="after_plan_line">Right after the procedure plan line</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Active library</label>
+                <div id="lib-status" style="font-size:13px">Loading&hellip;</div>
+                <div id="lib-error" class="warning" style="display:none"></div>
+                <button class="btn btn-secondary" id="lib-refresh" type="button" style="margin-top:6px">Refresh now</button>
+            </div>
+            <div class="form-group">
+                <label for="lib-token">GitHub token (read-only, pain-criteria-library)</label>
+                <input type="password" id="lib-token" placeholder="Paste token to save or replace" autocomplete="off">
+                <div id="lib-token-status" class="api-key-status not-set">No token</div>
+                <div style="display:flex;gap:8px;margin-top:6px">
+                    <button class="btn btn-secondary" id="lib-token-save" type="button">Save token</button>
+                    <button class="btn btn-secondary" id="lib-token-clear" type="button">Remove token</button>
+                </div>
+                <div class="help-text">Stored encrypted with Windows DPAPI (Electron safeStorage); never shown again or logged. Without a token MNA uses its cached or bundled library.</div>
+            </div>
+        </div>
+    </div>
+
     <div class="section">
         <h2>About</h2>
         <div id="about-info" style="font-size:13px;color:#586069;line-height:1.7;">Loading&hellip;</div>
@@ -366,7 +356,11 @@
         <button class="btn btn-primary" id="save-btn">Save</button>
     </div>
 
+    <script src="lib/mna-core.js"></script>
     <script>
+        const C = window.MNACore;
+        const labelFor = (id) => (C.HOTKEY_ACTIONS.find(a => a.id === id) || { label: id }).label;
+
         // Tab switching
         const tabs = document.querySelectorAll('.tab');
         const tabContents = document.querySelectorAll('.tab-content');
@@ -419,11 +413,6 @@ Plan:
             claudeInstructions.value = settings.customClaudeInstructions || '';
             attestationTemplate.value = settings.customAttestationTemplate || DEFAULT_TEMPLATE;
 
-            // v2 hotkeys
-            document.getElementById('capture-hotkey').value  = settings.captureHotkey  || 'F8';
-            document.getElementById('paste-hotkey-1').value  = settings.pasteHotkey1   || 'F9';
-            document.getElementById('paste-hotkey-2').value  = settings.pasteHotkey2   || 'F10';
-            document.getElementById('paste-hotkey-3').value  = settings.pasteHotkey3   || 'F11';
             document.getElementById('exam-dot-phrase').value = settings.examDotPhrase  || '';
 
             // Show API key status (don't populate the field for security)
@@ -437,7 +426,6 @@ Plan:
             }
 
             checkHotkeyConflict();
-            checkPasteHotkeyConflict();
         }
 
         loadSettings();
@@ -451,23 +439,8 @@ Plan:
             }
         }
 
-        function checkPasteHotkeyConflict() {
-            const p1 = document.getElementById('paste-hotkey-1').value;
-            const p2 = document.getElementById('paste-hotkey-2').value;
-            const p3 = document.getElementById('paste-hotkey-3').value;
-            const warning = document.getElementById('paste-hotkey-warning');
-            if (p1 === p2 || p1 === p3 || p2 === p3) {
-                warning.style.display = 'block';
-            } else {
-                warning.style.display = 'none';
-            }
-        }
-
         hpiHotkey.addEventListener('change', checkHotkeyConflict);
         apHotkey.addEventListener('change', checkHotkeyConflict);
-        document.getElementById('paste-hotkey-1').addEventListener('change', checkPasteHotkeyConflict);
-        document.getElementById('paste-hotkey-2').addEventListener('change', checkPasteHotkeyConflict);
-        document.getElementById('paste-hotkey-3').addEventListener('change', checkPasteHotkeyConflict);
 
         // Save
         saveBtn.addEventListener('click', async () => {
@@ -477,14 +450,11 @@ Plan:
             const newApiKey = apiKeyInput.value.trim();
             const claudeApiKey = newApiKey ? newApiKey : currentSettings.claudeApiKey;
 
+            if (hotkeysDirty && !(await applyHotkeys())) return; // keep the window open on invalid hotkeys
             await window.electronAPI.saveSettings({
                 heidiCopyEnabled: heidiEnabled.checked,
                 hpiHotkey: hpiHotkey.value,
                 apHotkey: apHotkey.value,
-                captureHotkey:  document.getElementById('capture-hotkey').value,
-                pasteHotkey1:   document.getElementById('paste-hotkey-1').value,
-                pasteHotkey2:   document.getElementById('paste-hotkey-2').value,
-                pasteHotkey3:   document.getElementById('paste-hotkey-3').value,
                 examDotPhrase:  document.getElementById('exam-dot-phrase').value,
                 claudeApiKey: claudeApiKey,
                 customClaudeInstructions: claudeInstructions.value,
@@ -508,6 +478,107 @@ Plan:
             attestationTemplate.value = DEFAULT_TEMPLATE;
         });
 
+        // ── Hotkeys: press-to-record ──
+        let hotkeyState = {}, hotkeysDirty = false, hotkeyPlatform = 'win32';
+        function comboFromEvent(e) {
+            const k = e.key;
+            if (['Control', 'Shift', 'Alt', 'Meta', 'OS'].includes(k)) return null;
+            let key = null;
+            if (/^F([1-9]|1[0-9]|2[0-4])$/.test(k)) key = k;
+            else if (/^[a-z0-9]$/i.test(k)) key = k.toUpperCase();
+            else key = ({ PageUp: 'PageUp', PageDown: 'PageDown', Insert: 'Insert', Delete: 'Delete', Home: 'Home', End: 'End',
+                          ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', ' ': 'Space' })[k] || null;
+            if (!key) return null;
+            const mods = [];
+            if (e.ctrlKey) mods.push('Ctrl'); if (e.altKey) mods.push('Alt'); if (e.shiftKey) mods.push('Shift'); if (e.metaKey) mods.push('Cmd');
+            return C.normalizeHotkey(mods.concat([key]).join('+'));
+        }
+        function renderHotkeyMsgs() {
+            const v = C.validateHotkeys(hotkeyState, hotkeyPlatform);
+            const box = document.getElementById('hotkey-msgs');
+            box.innerHTML = '';
+            v.errors.forEach(m => { const d = document.createElement('div'); d.className = 'warning'; d.textContent = '\u26A0 ' + m.message; box.append(d); });
+            v.warnings.forEach(m => { const d = document.createElement('div'); d.className = 'help-text'; d.style.color = '#b08800'; d.textContent = '\u26A0 ' + m.message; box.append(d); });
+            return v;
+        }
+        function renderHotkeyRows(actions) {
+            const box = document.getElementById('hotkey-rows');
+            box.innerHTML = '';
+            actions.forEach(a => {
+                const g = document.createElement('div'); g.className = 'form-group';
+                const l = document.createElement('label'); l.textContent = a.label;
+                const inp = document.createElement('input'); inp.type = 'text'; inp.readOnly = true; inp.value = hotkeyState[a.id];
+                inp.style.cssText = 'width:100%;padding:8px;border:1px solid #e1e4e8;border-radius:4px;font-size:13px;cursor:pointer';
+                inp.addEventListener('focus', () => { inp.value = 'Press keys\u2026'; });
+                inp.addEventListener('blur', () => { inp.value = hotkeyState[a.id]; });
+                inp.addEventListener('keydown', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    if (e.key === 'Escape' || e.key === 'Tab') { inp.blur(); return; }
+                    const combo = comboFromEvent(e);
+                    if (!combo) return;
+                    hotkeyState[a.id] = combo; hotkeysDirty = true;
+                    inp.value = combo; inp.blur(); renderHotkeyMsgs();
+                });
+                g.append(l, inp); box.append(g);
+            });
+            renderHotkeyMsgs();
+        }
+        async function applyHotkeys() {
+            const v = renderHotkeyMsgs();
+            if (!v.ok) return false;
+            const r = await window.electronAPI.saveHotkeys(hotkeyState);
+            if (!r.ok) { renderHotkeyMsgs(); return false; }
+            hotkeyState = { ...r.bindings }; hotkeysDirty = false;
+            const box = document.getElementById('hotkey-msgs');
+            const d = document.createElement('div'); d.className = 'api-key-status set'; d.textContent = 'Hotkeys active: ' +
+                Object.entries(r.bindings).map(([k, b]) => labelFor(k) + ' ' + b).join(', ');
+            box.append(d);
+            return true;
+        }
+        (async () => {
+            const hk = await window.electronAPI.getHotkeys();
+            hotkeyState = { ...hk.bindings }; hotkeyPlatform = hk.platform;
+            renderHotkeyRows(hk.actions);
+            document.getElementById('hotkeys-reset').addEventListener('click', () => {
+                hotkeyState = { ...hk.defaults }; hotkeysDirty = true; renderHotkeyRows(hk.actions);
+            });
+            document.getElementById('hotkeys-apply').addEventListener('click', applyHotkeys);
+        })();
+
+        // ── Criteria library ──
+        function showLibrary(st) {
+            const src = { download: 'downloaded', cache: 'local cache', snapshot: 'bundled snapshot', none: 'none' }[st.source] || st.source;
+            const when = st.builtAt ? new Date(st.builtAt).toLocaleString() : '\u2014';
+            document.getElementById('lib-status').innerHTML = st.hasLibrary
+                ? 'Library as of <strong>' + when + '</strong> (release <code>' + (st.tag || '?') + '</code>)<br>Source: <strong>' + src + '</strong>' +
+                  (st.lastCheck ? ' &middot; last check ' + new Date(st.lastCheck).toLocaleTimeString() : '')
+                : '<span class="warning">No library available</span>';
+            const err = document.getElementById('lib-error');
+            err.style.display = st.lastError ? 'block' : 'none';
+            err.textContent = st.lastError ? 'Last refresh failed: ' + st.lastError + ' (using ' + src + ')' : '';
+            if (st.error) { err.style.display = 'block'; err.textContent = st.error; }
+            const ts = document.getElementById('lib-token-status');
+            ts.textContent = st.hasToken ? 'Token saved' : (st.encryptionAvailable === false ? 'Secure storage unavailable on this machine' : 'No token (using cached/bundled library)');
+            ts.className = 'api-key-status ' + (st.hasToken ? 'set' : 'not-set');
+            document.getElementById('lib-enabled').checked = !!st.enabled;
+            document.getElementById('lib-insertion').value = st.insertion || 'end';
+        }
+        (async () => {
+            showLibrary(await window.electronAPI.libraryStatus());
+            document.getElementById('lib-enabled').addEventListener('change', async (e) => showLibrary(await window.electronAPI.librarySetOptions({ enabled: e.target.checked })));
+            document.getElementById('lib-insertion').addEventListener('change', async (e) => showLibrary(await window.electronAPI.librarySetOptions({ insertion: e.target.value })));
+            document.getElementById('lib-refresh').addEventListener('click', async (e) => {
+                e.target.disabled = true; e.target.textContent = 'Refreshing\u2026';
+                try { showLibrary(await window.electronAPI.libraryRefresh()); } finally { e.target.disabled = false; e.target.textContent = 'Refresh now'; }
+            });
+            document.getElementById('lib-token-save').addEventListener('click', async () => {
+                const inp = document.getElementById('lib-token');
+                const t = inp.value; inp.value = '';
+                if (t.trim()) showLibrary(await window.electronAPI.librarySetToken(t));
+            });
+            document.getElementById('lib-token-clear').addEventListener('click', async () => showLibrary(await window.electronAPI.librarySetToken('')));
+        })();
+
         // Populate About panel (build provenance + active model)
         (async () => {
             try {
@@ -518,7 +589,9 @@ Plan:
                     'Build: <code>' + info.commit + '</code>' +
                     (info.runNumber ? ' (CI #' + info.runNumber + ')' : '') + '<br>' +
                     'Built: ' + built + '<br>' +
-                    'Claude model: <code>' + info.model + '</code>';
+                    'Claude model: <code>' + info.model + '</code><br>' +
+                    'Library snapshot: <code>' + (info.librarySnapshot || 'none bundled') + '</code><br>' +
+                    'Hotkeys: ' + Object.entries(info.hotkeys || {}).map(([k, v]) => labelFor(k) + ' <code>' + v + '</code>').join(' &middot; ');
             } catch (e) {
                 document.getElementById('about-info').textContent = 'Build info unavailable';
             }
