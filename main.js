@@ -2,6 +2,7 @@ const { app, BrowserWindow, globalShortcut, clipboard, ipcMain, Menu, net, deskt
 const { execSync, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { createMtimePoller, parseSlotsJson } = require('./lib/slot-poller');
 
 // Anthropic model used for all Claude API calls.
 // The previous Sonnet 4 model (dated 20250514) was retired from the API on 2026-06-15;
@@ -56,7 +57,7 @@ function launchAHK() {
 
 function killAHK() {
     if (ahkProcess) { try { ahkProcess.kill(); } catch(e) {} ahkProcess = null; }
-    if (slotsWatcher) { try { slotsWatcher.close(); } catch(e) {} slotsWatcher = null; }
+    if (slotsPoller) { slotsPoller.stop(); slotsPoller = null; }
 }
 
 function writeAhkConfig(examDotPhrase) {
@@ -67,7 +68,7 @@ function writeAhkConfig(examDotPhrase) {
     try { fs.writeFileSync(config, ini, 'utf-8'); } catch (e) { console.error('Failed to write AHK config:', e.message); }
 }
 
-let slotsWatcher = null;
+let slotsPoller = null;
 
 function sendSlotState() {
     if (!mainWindow) return;
@@ -84,27 +85,24 @@ function sendSlotState() {
     });
 }
 
+// Polls heidi-slots.json every 250 ms by mtime (fs.watch doesn't fire on UNC/network paths).
 function watchSlotsFile() {
     if (process.platform !== 'win32') return;
-    const { dir } = getAhkPaths();
-    readSlotsFile();
-    try {
-        slotsWatcher = fs.watch(dir, (eventType, filename) => {
-            if (filename === 'heidi-slots.json') { setTimeout(() => readSlotsFile(), 150); }
-        });
-    } catch (e) { console.error('Failed to watch slots dir:', e.message); }
+    const { slots: slotsPath } = getAhkPaths();
+    slotsPoller = createMtimePoller(slotsPath, readSlotsFile).start();
 }
 
+// Returns false on a read/parse failure so the poller retries (e.g. AHK mid-write).
 function readSlotsFile() {
     const { slots: slotsPath } = getAhkPaths();
     try {
-        if (!fs.existsSync(slotsPath)) return;
-        const raw = fs.readFileSync(slotsPath, 'utf-8').replace(/^\uFEFF/, '');
-        const data = JSON.parse(raw);
+        if (!fs.existsSync(slotsPath)) return false;
+        const data = parseSlotsJson(fs.readFileSync(slotsPath, 'utf-8'));
         if (data.hpi !== undefined) slots.hpi = data.hpi || null;
         if (data.ap  !== undefined) slots.ap  = data.ap  || null;
         sendSlotState();
-    } catch (e) { console.error('Failed to read slots file:', e.message); }
+        return true;
+    } catch (e) { console.error('Failed to read slots file:', e.message); return false; }
 }
 
 // Portable config

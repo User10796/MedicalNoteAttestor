@@ -12,6 +12,8 @@ xcuserdata/
 DerivedData/
 
 # Windows/Electron
+node_modules/
+dist/
 MedicalNoteAttestor-Windows/node_modules/
 MedicalNoteAttestor-Windows/dist/
 
