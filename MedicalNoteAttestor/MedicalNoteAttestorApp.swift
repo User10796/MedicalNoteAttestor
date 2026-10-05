@@ -35,11 +35,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     static weak var shared: AppDelegate?
 
     private var eventHandler: EventHandlerRef?
-    private var captureHotKeyRef: EventHotKeyRef?
-    private var paste1HotKeyRef: EventHotKeyRef?
-    private var paste2HotKeyRef: EventHotKeyRef?
-    private var paste3HotKeyRef: EventHotKeyRef?
+    let hotkeys = HotkeyManager(registrar: CarbonHotkeyRegistrar())
     let heidiCopyService = HeidiCopyService()
+    private var sessionLastPayer: String?   // hint only; never pre-selected
     private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -66,16 +64,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Install the event handler once
         installEventHandler()
 
-        // Register global hotkeys
-        registerGlobalHotkeys()
+        // Register global hotkeys; HotkeyManager re-registers on every UserDefaults change
+        // (Settings > Hotkeys), so rebinding applies without a restart.
+        hotkeys.start(handlers: [
+            .capture:   { Task { @MainActor in await AppDelegate.shared?.performCapture() } },
+            .pasteHpi:  { Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 1) } },
+            .pasteExam: { Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 2) } },
+            .pasteAp:   { Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 3) } }
+        ])
 
-        // Listen for settings changes to re-register hotkeys
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(settingsChanged),
-            name: UserDefaults.didChangeNotification,
-            object: nil
-        )
+        // Criteria library: local cache/snapshot now, live refresh at launch and every 6 h.
+        Task { @MainActor in LibraryStore.shared.start() }
     }
 
     private func checkAccessibilityPermissions() {
@@ -93,17 +92,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        unregisterGlobalHotkeys()
+        hotkeys.suspend()
     }
 
     func openSettings() {
         NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-    }
-
-    @objc private func settingsChanged() {
-        // Re-register hotkeys when settings change
-        unregisterGlobalHotkeys()
-        registerGlobalHotkeys()
     }
 
     // MARK: - Global Hotkey Registration
@@ -143,45 +136,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func registerGlobalHotkeys() {
-        let settings = SettingsManager.shared
-
-        @discardableResult
-        func reg(_ id: UInt32, _ sig: OSType, _ key: UInt32, _ action: @escaping () -> Void) -> EventHotKeyRef? {
-            var hkID = EventHotKeyID()
-            hkID.signature = sig
-            hkID.id = id
-            var ref: EventHotKeyRef?
-            RegisterEventHotKey(key, 0, hkID, GetEventDispatcherTarget(), 0, &ref)
-            HotkeyActions.shared.actions[id] = action
-            return ref
-        }
-
-        captureHotKeyRef = reg(1, OSType(0x4D4E4131), settings.captureHotkey.keyCode) {
-            Task { @MainActor in await AppDelegate.shared?.performCapture() }
-        }
-        paste1HotKeyRef = reg(2, OSType(0x4D4E4132), settings.pasteHotkey1.keyCode) {
-            Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 1) }
-        }
-        paste2HotKeyRef = reg(3, OSType(0x4D4E4133), settings.pasteHotkey2.keyCode) {
-            Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 2) }
-        }
-        paste3HotKeyRef = reg(4, OSType(0x4D4E4134), settings.pasteHotkey3.keyCode) {
-            Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 3) }
-        }
-    }
-
-    private func unregisterGlobalHotkeys() {
-        for ref in [captureHotKeyRef, paste1HotKeyRef, paste2HotKeyRef, paste3HotKeyRef] {
-            if let r = ref { UnregisterEventHotKey(r) }
-        }
-        captureHotKeyRef = nil
-        paste1HotKeyRef  = nil
-        paste2HotKeyRef  = nil
-        paste3HotKeyRef  = nil
-        HotkeyActions.shared.actions.removeAll()
-    }
-
     // MARK: - Capture
 
     @MainActor
@@ -195,15 +149,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         slotManager.hpiSlot = heidiCopyService.parseHPI(from: fullText)
         slotManager.apSlot  = heidiCopyService.parseAP(from: fullText)
+        let captureId = slotManager.beginCapture()   // drops the previous patient's library text
 
         slotManager.isCapturing = false
 
         Task { await slotManager.appendActionItems() }
+        await runLibraryFlow(captureId: captureId)
     }
-}
 
-// Helper class to store hotkey actions (needed for C callback)
-class HotkeyActions {
-    static let shared = HotkeyActions()
-    var actions: [UInt32: () -> Void] = [:]
+    // Capture -> payer picker -> detection -> library selections (source-agnostic: takes the
+    // A&P text from whichever scribe filled the slots). Composition happens at paste time so the
+    // A&P includes the action-item bullets that arrive asynchronously. No network, no LLM.
+    @MainActor
+    func runLibraryFlow(captureId: UUID) async {
+        let slotManager = HeidiSlotManager.shared
+        let library = LibraryStore.shared
+        guard library.enabled, library.hasLibrary, let ap = slotManager.apSlot, !ap.isEmpty else { return }
+        let core = MNACore.shared
+        let detection = core.detect(ap: ap)
+        guard let answer = await PayerPickerController.shared.present(
+            detection: detection, recents: library.recents, sessionLastPayer: sessionLastPayer) else { return } // Skip
+        guard slotManager.captureId == captureId else { return }  // a newer capture arrived meanwhile
+        sessionLastPayer = answer.payerId
+        library.recents = core.recordRecentPayer(recents: library.recents, payerId: answer.payerId)
+        let results = core.resolve(payerId: answer.payerId, rows: answer.rows).filter { $0.insert }
+        let planLine = answer.rows.first(where: { $0.checked && $0.line != nil })?.line
+        slotManager.setLibrarySelections(captureId: captureId,
+                                         exams: results.map(\.examText).filter { !$0.isEmpty },
+                                         dotphrases: results.map(\.dotphrase).filter { !$0.isEmpty },
+                                         planLine: planLine)
+    }
 }

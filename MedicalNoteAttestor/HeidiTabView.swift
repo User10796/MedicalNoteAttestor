@@ -8,7 +8,7 @@ struct HeidiTabView: View {
         VStack(spacing: 8) {
             // Slot order: HPI → Exam → A/P
             SlotCard(label: "HPI",
-                     hotkeyLabel: settings.pasteHotkey1.rawValue,
+                     hotkeyLabel: settings.pasteHotkey1,
                      content: slotManager.hpiSlot,
                      isHighlighted: slotManager.lastPastedSlot == 1,
                      isLoading: false,
@@ -16,16 +16,16 @@ struct HeidiTabView: View {
                      onCopy: { slotManager.writeToClipboard(slot: 1) })
 
             SlotCard(label: "Exam",
-                     hotkeyLabel: settings.pasteHotkey2.rawValue,
-                     content: slotManager.examSlot.isEmpty ? nil : slotManager.examSlot,
+                     hotkeyLabel: settings.pasteHotkey2,
+                     content: slotManager.composedExam,
                      isHighlighted: slotManager.lastPastedSlot == 2,
                      isLoading: false,
                      emptyLabel: "Configure in Settings",
                      onCopy: { slotManager.writeToClipboard(slot: 2) })
 
             SlotCard(label: "A/P",
-                     hotkeyLabel: settings.pasteHotkey3.rawValue,
-                     content: slotManager.apSlot,
+                     hotkeyLabel: settings.pasteHotkey3,
+                     content: slotManager.composedAP,
                      isHighlighted: slotManager.lastPastedSlot == 3,
                      isLoading: slotManager.isLoadingBullets,
                      emptyLabel: "Empty",
@@ -36,7 +36,7 @@ struct HeidiTabView: View {
             }) {
                 Label(slotManager.isCapturing
                         ? "Capturing…"
-                        : "Capture  \(settings.captureHotkey.rawValue)",
+                        : "Capture  \(settings.captureHotkey)",
                       systemImage: "doc.on.clipboard")
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
@@ -48,9 +48,14 @@ struct HeidiTabView: View {
                 .buttonStyle(.bordered)
                 .frame(maxWidth: .infinity)
 
-            Text("\(settings.pasteHotkey1.rawValue) HPI  ·  "
-               + "\(settings.pasteHotkey2.rawValue) Exam  ·  "
-               + "\(settings.pasteHotkey3.rawValue) A/P")
+            if slotManager.libraryAdded {
+                Text("Library text added to Exam / A&P")
+                    .font(.caption2).foregroundColor(.green)
+            }
+
+            Text("\(settings.pasteHotkey1) HPI  ·  "
+               + "\(settings.pasteHotkey2) Exam  ·  "
+               + "\(settings.pasteHotkey3) A/P")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }

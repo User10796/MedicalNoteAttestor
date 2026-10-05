@@ -23,7 +23,8 @@ enum ClaudeAPIError: Error, LocalizedError {
 
 class ClaudeAPIClient {
     private let apiURL = URL(string: "https://api.anthropic.com/v1/messages")!
-    private let claudeModel = "claude-sonnet-4-6"
+    static let model = "claude-sonnet-4-6"
+    private let claudeModel = ClaudeAPIClient.model
     private let maxTokens = 4096
 
     // UserDefaults key for storing API key
