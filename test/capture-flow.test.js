@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
-const { createCaptureFlow, createComposedStore, decodeComposed } = require('../lib/capture-flow');
+const { createCaptureFlow, createComposedStore, decodeComposed, createCaptureTracker } = require('../lib/capture-flow');
 const { bundleRaw, tmpDir } = require('./helpers');
 
 const bundle = JSON.parse(bundleRaw);
@@ -81,4 +81,19 @@ test('source-agnostic: a non-Heidi source with its own exam composes the same wa
     const { flow, store } = makeFlow(confirmAll('medicare_ab_ga'));
     await flow.onCapture({ source: 'second-scribe', captureTs: '9', ap: AP, exam: '' });
     assert.ok(store.read('exam').text.startsWith('Lumbar spine and lower extremities:'), 'empty scribe exam -> library exam alone');
+});
+
+test('capture tracker: leftover slot file at launch is not a new capture', () => {
+    const t = createCaptureTracker();
+    t.init(true);
+    assert.strictEqual(t.observe('100'), false, 'first read records state only');
+    assert.strictEqual(t.observe('100'), false, 'same capture');
+    assert.strictEqual(t.observe('200'), true, 'next F8');
+});
+
+test('capture tracker: no slot file at launch -> the first file is a new capture', () => {
+    const t = createCaptureTracker();
+    t.init(false);
+    assert.strictEqual(t.observe('300'), true);
+    assert.strictEqual(t.observe('300'), false);
 });

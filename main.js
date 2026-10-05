@@ -5,7 +5,7 @@ const fs = require('fs');
 const { createMtimePoller, parseSlotsJson } = require('./lib/slot-poller');
 const core = require('./lib/mna-core');
 const { createLibraryClient, writeUtf8NoBom } = require('./lib/library-client');
-const { createCaptureFlow, createComposedStore } = require('./lib/capture-flow');
+const { createCaptureFlow, createComposedStore, createCaptureTracker } = require('./lib/capture-flow');
 
 // Anthropic model used for all Claude API calls.
 // The previous Sonnet 4 model (dated 20250514) was retired from the API on 2026-06-15;
@@ -73,7 +73,7 @@ function writeAhkConfig(examDotPhrase) {
 }
 
 let slotsPoller = null;
-let lastSlotsTs; // undefined until the first read after launch
+const captureTracker = createCaptureTracker();
 
 function sendSlotState() {
     if (!mainWindow) return;
@@ -96,6 +96,7 @@ function sendSlotState() {
 function watchSlotsFile() {
     if (process.platform !== 'win32') return;
     const { slots: slotsPath } = getAhkPaths();
+    captureTracker.init(fs.existsSync(slotsPath));
     slotsPoller = createMtimePoller(slotsPath, readSlotsFile).start();
 }
 
@@ -108,8 +109,7 @@ function readSlotsFile() {
         if (data.hpi !== undefined) slots.hpi = data.hpi || null;
         if (data.ap  !== undefined) slots.ap  = data.ap  || null;
         const ts = data.timestamp != null ? String(data.timestamp) : null;
-        const isNewCapture = ts && lastSlotsTs !== undefined && ts !== lastSlotsTs;
-        lastSlotsTs = ts;   // first read at launch only records the file's state (no picker for an old capture)
+        const isNewCapture = captureTracker.observe(ts);  // the leftover file at launch is not a new capture
         sendSlotState();
         if (isNewCapture && (slots.ap || slots.hpi)) startLibraryFlow('heidi', ts);
         return true;
