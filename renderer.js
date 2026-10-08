@@ -272,13 +272,16 @@ function flashSlotCard(slotName) {
     setTimeout(() => card.classList.remove('highlighted'), 400);
 }
 
-function setHeidiStatus(msg, type) {
+// Sticky = stays until the next capture/clear (used for "Capture failed — nothing to paste").
+let heidiStatusSticky = false;
+function setHeidiStatus(msg, type, sticky) {
+    heidiStatusSticky = !!sticky;
     type = type || '';
     const el = document.getElementById('heidi-status');
     if (!el) return;
     el.textContent = msg;
     el.className = 'status' + (type ? ` ${type}` : '');
-    if (msg) setTimeout(() => { el.textContent = ''; el.className = 'status'; }, 3500);
+    if (msg && !sticky) setTimeout(() => { if (!heidiStatusSticky) { el.textContent = ''; el.className = 'status'; } }, 3500);
 }
 
 function updateHotkeyLabels(settings) {
@@ -308,6 +311,8 @@ async function clearSlots() {
     await window.electronAPI.clearSlots();
     updateSlotCard('hpi', false, null);
     updateSlotCard('ap', false, null);
+    const st = await window.electronAPI.getSlotState();
+    updateSlotCard('exam', st.examLoaded, st.examPreview);
     setHeidiStatus('Slots cleared');
 }
 
@@ -321,6 +326,7 @@ async function clearSlots() {
     updateSlotCard('exam', state.examLoaded, state.examPreview);
     updateSlotCard('ap',   state.apLoaded,   state.apPreview);
     updateHotkeyLabels(settings);
+    if (state.captureFailed) setHeidiStatus('\u26A0\uFE0F ' + state.message, 'error', true);
     if (document.getElementById('hpi-key'))
         document.getElementById('hpi-key').textContent = settings.hpiHotkey;
     if (document.getElementById('ap-key'))
@@ -333,7 +339,13 @@ window.electronAPI.onCaptureResult((data) => {
     if (btn) { btn.disabled = false; btn.textContent = '\uD83D\uDCCB Capture Note'; }
 
     if (!data.success) {
-        setHeidiStatus('\u26A0\uFE0F Clipboard empty \u2014 Ctrl+A + Ctrl+C in Heidi first', 'error');
+        // Failed capture: every slot is empty and stays empty until the next good capture.
+        updateSlotCard('hpi', false, null);
+        updateSlotCard('exam', false, null);
+        updateSlotCard('ap', false, null);
+        if (data.hotkeys) updateHotkeyLabels({ captureHotkey: data.hotkeys.capture, pasteHotkey1: data.hotkeys.pasteHpi,
+                                               pasteHotkey2: data.hotkeys.pasteExam, pasteHotkey3: data.hotkeys.pasteAp });
+        setHeidiStatus('\u26A0\uFE0F ' + (data.message || 'Capture failed \u2014 nothing to paste'), 'error', true);
         return;
     }
     updateSlotCard('hpi',  data.hpiLoaded,  data.hpiPreview);

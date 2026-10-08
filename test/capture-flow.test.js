@@ -106,3 +106,52 @@ test('reset after a composed capture drops the composed text and files', async (
     assert.strictEqual(flow.composed(), null);
     assert.ok(!fs.existsSync(store.files.exam) && !fs.existsSync(store.files.ap));
 });
+
+// ── Failed captures (approved 2026-10-08) ────────────────────────────────────────────────────
+const { CAPTURE_FAILED_TEXT, isCaptureFailure, slotContent } = require('../lib/capture-flow');
+
+test('failed capture: empty clipboard, whitespace, or no sections; AHK flag honored', () => {
+    assert.strictEqual(isCaptureFailure({ text: '', hpi: null, ap: null }), true);
+    assert.strictEqual(isCaptureFailure({ text: '  \n', hpi: null, ap: null }), true);
+    assert.strictEqual(isCaptureFailure({ text: 'no headers here', hpi: null, ap: null }), true);
+    assert.strictEqual(isCaptureFailure({ failed: true, hpi: 'x', ap: 'y' }), true);
+    assert.strictEqual(isCaptureFailure({ hpi: 'x', ap: null }), false, 'HPI only is a capture');
+    assert.strictEqual(isCaptureFailure({ hpi: null, ap: 'y' }), false, 'A&P only is a capture');
+    assert.strictEqual(CAPTURE_FAILED_TEXT, 'Capture failed — nothing to paste');
+});
+
+test('after a failed capture F9/F10/F11 paste nothing (not even the exam dot-phrase or library text)', () => {
+    const s = { failed: true, hpi: 'old HPI', ap: 'old A&P', examDotPhrase: 'Gen: NAD', composedExam: 'lib exam', composedAp: 'lib ap' };
+    for (const slot of ['hpi', 'exam', 'ap']) assert.strictEqual(slotContent(slot, s), '', slot);
+});
+
+test('after a good capture pastes are unchanged: composed text wins, else slot / exam dot-phrase', () => {
+    const s = { failed: false, hpi: 'HPI', ap: 'A&P', examDotPhrase: 'Gen: NAD', composedExam: null, composedAp: null };
+    assert.strictEqual(slotContent('hpi', s), 'HPI');
+    assert.strictEqual(slotContent('exam', s), 'Gen: NAD');
+    assert.strictEqual(slotContent('ap', s), 'A&P');
+    assert.strictEqual(slotContent('exam', { ...s, composedExam: 'Gen: NAD\n\nLib' }), 'Gen: NAD\n\nLib');
+    assert.strictEqual(slotContent('ap', { ...s, composedAp: 'A&P\n\nDot' }), 'A&P\n\nDot');
+});
+
+test('main.js wires failed captures: clipboard cleared before copy, failure clears slots, pastes gated', () => {
+    const src = fs.readFileSync(require('path').join(__dirname, '..', 'main.js'), 'utf8');
+    assert.match(src, /clipboard\.clear\(\);\s*\n\s*\/\/ Step 1/, 'stale clipboard can never be captured');
+    assert.match(src, /captureFailed = isCaptureFailure\(\{ failed: data\.failed/, 'AHK failed flag honored');
+    assert.match(src, /if \(captureFailed\) \{ slots\.hpi = null; slots\.ap = null; \}/);
+    assert.match(src, /slotContent\('hpi', pasteState\(\)\)/);
+    assert.match(src, /function effectiveExam\(\) \{ return slotContent\('exam', pasteState\(\)\)/);
+    assert.match(src, /function effectiveAp\(\) \{ return slotContent\('ap', pasteState\(\)\)/);
+    assert.match(src, /if \(isNewCapture && !captureFailed && slots\.ap\) startLibraryFlow/, 'no picker after a failed capture');
+});
+
+test('AHK writes the failed flag and gates every paste on it', () => {
+    const ahk = fs.readFileSync(require('path').join(__dirname, '..', 'autohotkey', 'heidi-hotkeys.ahk'), 'utf8');
+    assert.match(ahk, /"failed":' \. \(failed \? "true" : "false"\)/);
+    for (const fn of ['DoPasteHpi', 'DoPasteExam', 'DoPasteAp']) {
+        const body = ahk.slice(ahk.indexOf(fn + '() {'), ahk.indexOf('}', ahk.indexOf(fn + '() {')));
+        assert.match(body, /MnaContentToPaste\(captureFailed,/, fn + ' gated');
+    }
+    assert.match(ahk, /MnaClearComposed\(GetRuntimeDir\(\)\)/);
+    assert.match(ahk, /slotHPI := ""\s*\n\s*slotAP := ""/);
+});
