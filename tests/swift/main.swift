@@ -102,5 +102,19 @@ RunLoop.main.run(until: Date().addingTimeInterval(0.3))
 check(fake.registerCalls == calls, "unrelated UserDefaults changes don't re-register")
 UserDefaults().removePersistentDomain(forName: suite)
 
+// ── Failed captures (approved 2026-10-08) ─────────────────────────────────────────────────
+check(CaptureGate.isFailure(text: "old patient note", clipboardChanged: false, hpi: "x", ap: "y"),
+      "copy that didn't change the clipboard is a failure (stale text never captured)")
+check(CaptureGate.isFailure(text: "", clipboardChanged: true, hpi: nil, ap: nil), "empty clipboard is a failure")
+check(CaptureGate.isFailure(text: "  \n", clipboardChanged: true, hpi: nil, ap: nil), "whitespace is a failure")
+check(CaptureGate.isFailure(text: "no headers", clipboardChanged: true, hpi: nil, ap: nil), "no sections is a failure")
+check(!CaptureGate.isFailure(text: "note", clipboardChanged: true, hpi: "h", ap: nil), "HPI only is a capture")
+check(!CaptureGate.isFailure(text: "note", clipboardChanged: true, hpi: nil, ap: "a"), "A&P only is a capture")
+check((1...3).allSatisfy { CaptureGate.content(slot: $0, failed: true, hpi: "old", exam: "Gen: NAD", ap: "old") == nil },
+      "after a failed capture F9/F10/F11 paste nothing (not even the exam dot-phrase)")
+check(CaptureGate.content(slot: 2, failed: false, hpi: "h", exam: "Gen: NAD", ap: "a") == "Gen: NAD"
+      && CaptureGate.content(slot: 3, failed: false, hpi: "h", exam: "e", ap: "a") == "a", "good capture pastes unchanged")
+check(CaptureGate.failureMessage == "Capture failed \u{2014} nothing to paste", "failure message text")
+
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

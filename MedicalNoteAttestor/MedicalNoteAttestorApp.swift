@@ -145,13 +145,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         slotManager.isCapturing = true
 
+        let changeCountBefore = NSPasteboard.general.changeCount
         let fullText = await heidiCopyService.copyFullDocument(delay: delay) ?? ""
+        let clipboardChanged = NSPasteboard.general.changeCount != changeCountBefore
 
-        slotManager.hpiSlot = heidiCopyService.parseHPI(from: fullText)
-        slotManager.apSlot  = heidiCopyService.parseAP(from: fullText)
+        let hpi = heidiCopyService.parseHPI(from: fullText)
+        let ap  = heidiCopyService.parseAP(from: fullText)
         let captureId = slotManager.beginCapture()   // drops the previous patient's library text
-
         slotManager.isCapturing = false
+
+        // Failed capture (copy didn't land, empty, or no sections): clear everything, say so.
+        if CaptureGate.isFailure(text: fullText, clipboardChanged: clipboardChanged, hpi: hpi, ap: ap) {
+            slotManager.markCaptureFailed()
+            return
+        }
+        slotManager.hpiSlot = hpi
+        slotManager.apSlot  = ap
 
         Task { await slotManager.appendActionItems() }
         await runLibraryFlow(captureId: captureId)

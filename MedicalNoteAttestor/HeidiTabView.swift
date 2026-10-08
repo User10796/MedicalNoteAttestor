@@ -48,6 +48,13 @@ struct HeidiTabView: View {
                 .buttonStyle(.bordered)
                 .frame(maxWidth: .infinity)
 
+            if slotManager.captureFailed {
+                Text("\u{26A0}\u{FE0F} " + CaptureGate.failureMessage)
+                    .font(.caption).bold().foregroundColor(.white)
+                    .padding(6).frame(maxWidth: .infinity)
+                    .background(Color.red.opacity(0.85)).cornerRadius(4)
+            }
+
             if slotManager.libraryAdded {
                 Text("Library text added to Exam / A&P")
                     .font(.caption2).foregroundColor(.green)

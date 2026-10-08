@@ -8,6 +8,7 @@ global slotHPI := ""
 global slotAP  := ""
 global examDotPhrase := ""
 global lastCaptureTs := ""          ; A_TickCount of the capture these slots belong to
+global captureFailed := false       ; last F8 failed: F9/F10/F11 paste nothing until a good capture
 global activeHotkeys := Map()       ; action -> AHK key currently registered
 global lastHotkeysText := "<unread>"
 global HPI_HEADERS := ["Interval history, HPI:", "History of Present Illness (HPI):", "History of Present Illness:"]
@@ -47,71 +48,78 @@ PgDn:: {
 ; F8-F11 defaults are registered dynamically (see ApplyHotkeys); the legacy PgUp/PgDn above stay fixed.
 
 DoCapture() {
-    global slotHPI, slotAP, lastCaptureTs
+    global slotHPI, slotAP, lastCaptureTs, captureFailed
     LoadConfig()
     A_Clipboard := ""
     Send "^a^c"
     ClipWait 2
     text := A_Clipboard
-    if (text = "") {
-        lastCaptureTs := ""   ; a failed capture must never pick up library text composed for the previous one
-        SoundBeep 300, 200
+    hpi := text = "" ? "" : ExtractHPI(text)
+    ap  := text = "" ? "" : ExtractAP(text)
+    lastCaptureTs := A_TickCount
+    if MnaCaptureFailed(text, hpi, ap) {
+        ; Clear everything so F9/F10/F11 can't paste the previous patient's text.
+        captureFailed := true
+        slotHPI := ""
+        slotAP := ""
+        MnaClearComposed(GetRuntimeDir())
+        WriteSlots(true)          ; tells the MNA window, which shows the same message
+        if (text != "")
+            A_Clipboard := text
+        ShowCaptureFailed()
+        SoundBeep 300, 300
         return
     }
-    slotHPI := ExtractHPI(text)
-    slotAP  := ExtractAP(text)
-    lastCaptureTs := A_TickCount
+    captureFailed := false
+    slotHPI := hpi
+    slotAP  := ap
     A_Clipboard := text
     WriteSlots()
     if (slotHPI != "" && slotAP != "") {
         SoundBeep 880, 80
         Sleep 60
         SoundBeep 880, 80
-    } else if (slotHPI != "" || slotAP != "") {
-        SoundBeep 660, 150
     } else {
-        SoundBeep 300, 300
+        SoundBeep 660, 150
     }
+}
+
+ShowCaptureFailed() {
+    ToolTip(MnaCaptureFailedText())
+    SetTimer(() => ToolTip(), -4000)
+}
+
+; Paste `content`, or (nothing to paste) beep, and repeat the failure message if F8 failed.
+PasteOrBeep(content) {
+    global captureFailed
+    if (content = "") {
+        if captureFailed
+            ShowCaptureFailed()
+        SoundBeep 300, 200
+        return
+    }
+    PasteText(content)
 }
 
 DoPasteHpi() {
-    global slotHPI
-    if (slotHPI = "") {
-        SoundBeep 300, 200
-        return
-    }
-    PasteText(slotHPI)
+    global slotHPI, captureFailed
+    PasteOrBeep(MnaContentToPaste(captureFailed, "", slotHPI))
 }
 
 ; Exam: library-composed text for this capture if Sterling confirmed a payer/procedure,
-; otherwise exactly today's behavior (exam dot-phrase, or a beep when it's empty).
+; otherwise the exam dot-phrase. Nothing after a failed capture.
 DoPasteExam() {
-    global examDotPhrase, lastCaptureTs
+    global examDotPhrase, lastCaptureTs, captureFailed
     composed := MnaReadComposed(GetRuntimeDir() "\mna-exam.txt", lastCaptureTs)
-    if (composed != "") {
-        PasteText(composed)
-        return
-    }
-    if (examDotPhrase = "") {
-        SoundBeep 300, 200
-        return
-    }
-    PasteText(examDotPhrase)
+    PasteOrBeep(MnaContentToPaste(captureFailed, composed, examDotPhrase))
 }
 
-; A&P: A&P + library dot-phrase(s) for this capture if confirmed, otherwise today's A&P.
+; A&P: A&P + library dot-phrase(s) for this capture if confirmed, otherwise the A&P.
+; Nothing after a failed capture.
 DoPasteAp() {
-    global slotAP, lastCaptureTs
+    global slotAP, lastCaptureTs, captureFailed
     composed := MnaReadComposed(GetRuntimeDir() "\mna-ap.txt", lastCaptureTs)
-    if (composed != "") {
-        PasteText(composed)
-        return
-    }
-    if (slotAP = "") {
-        SoundBeep 300, 200
-        return
-    }
-    PasteText(slotAP)
+    PasteOrBeep(MnaContentToPaste(captureFailed, composed, slotAP))
 }
 
 RunAction(action) {
@@ -245,12 +253,12 @@ GetRuntimeDir() {
     return A_ScriptDir "\..\..\"
 }
 
-WriteSlots() {
+WriteSlots(failed := false) {
     global slotHPI, slotAP, lastCaptureTs
     runtimeDir := GetRuntimeDir()
     slotsPath := runtimeDir "\heidi-slots.json"
     ts := lastCaptureTs
-    json := '{"hpi":"' . JsonEscape(slotHPI) . '","ap":"' . JsonEscape(slotAP) . '","timestamp":' . ts . '}'
+    json := '{"hpi":"' . JsonEscape(slotHPI) . '","ap":"' . JsonEscape(slotAP) . '","timestamp":' . ts . ',"failed":' . (failed ? "true" : "false") . '}'
     try {
         FileDelete slotsPath
         FileAppend json, slotsPath, "UTF-8-RAW"

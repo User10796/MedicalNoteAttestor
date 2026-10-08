@@ -54,3 +54,29 @@ MnaReadComposed(path, captureTs) {
 MnaLog(dir, msg) {
     try FileAppend(FormatTime(, "yyyy-MM-dd HH:mm:ss") " " msg "`n", dir "\mna-ahk.log", "UTF-8-RAW")
 }
+
+; Shown wherever the user is looking (tooltip at the cursor, and in the MNA window).
+MnaCaptureFailedText() {
+    return "Capture failed " Chr(0x2014) " nothing to paste"
+}
+
+; A capture failed when the clipboard came back empty or neither section was found.
+MnaCaptureFailed(text, hpi, ap) {
+    return (Trim(text) = "") || (hpi = "" && ap = "")
+}
+
+; What F9/F10/F11 should paste. After a failed capture: nothing, ever (not the exam dot-phrase,
+; not a previous patient's slot or library text). Otherwise the composed library text for this
+; capture if any, else the plain slot / exam dot-phrase.
+MnaContentToPaste(captureFailed, composed, fallback) {
+    if captureFailed
+        return ""
+    return composed != "" ? composed : fallback
+}
+
+; Delete the composed library outputs (mna-exam.txt / mna-ap.txt) in `dir`.
+MnaClearComposed(dir) {
+    for name in ["mna-exam.txt", "mna-ap.txt"] {
+        try FileDelete(dir "\" name)
+    }
+}

@@ -5,7 +5,7 @@ const fs = require('fs');
 const { createMtimePoller, parseSlotsJson } = require('./lib/slot-poller');
 const core = require('./lib/mna-core');
 const { createLibraryClient, writeUtf8NoBom } = require('./lib/library-client');
-const { createCaptureFlow, createComposedStore, createCaptureTracker } = require('./lib/capture-flow');
+const { createCaptureFlow, createComposedStore, createCaptureTracker, CAPTURE_FAILED_TEXT, isCaptureFailure, slotContent } = require('./lib/capture-flow');
 
 // Anthropic model used for all Claude API calls.
 // The previous Sonnet 4 model (dated 20250514) was retired from the API on 2026-06-15;
@@ -77,6 +77,11 @@ const captureTracker = createCaptureTracker();
 
 function sendSlotState() {
     if (!mainWindow) return;
+    if (captureFailed) {
+        mainWindow.webContents.send('capture-result', { success: false, reason: 'capture-failed', message: CAPTURE_FAILED_TEXT,
+                                                        hotkeys: currentHotkeys() });
+        return;
+    }
     const exam = effectiveExam();
     mainWindow.webContents.send('capture-result', {
         success: true,
@@ -110,9 +115,13 @@ function readSlotsFile() {
         if (data.ap  !== undefined) slots.ap  = data.ap  || null;
         const ts = data.timestamp != null ? String(data.timestamp) : null;
         const isNewCapture = captureTracker.observe(ts);  // the leftover file at launch is not a new capture
-        if (isNewCapture) beginCapture(ts);               // always drop the previous patient's library text
+        if (isNewCapture) {
+            beginCapture(ts);                             // always drop the previous patient's library text
+            captureFailed = isCaptureFailure({ failed: data.failed, hpi: slots.hpi, ap: slots.ap });
+            if (captureFailed) { slots.hpi = null; slots.ap = null; }
+        }
         sendSlotState();
-        if (isNewCapture && slots.ap) startLibraryFlow('heidi', ts);
+        if (isNewCapture && !captureFailed && slots.ap) startLibraryFlow('heidi', ts);
         return true;
     } catch (e) { console.error('Failed to read slots file:', e.message); return false; }
 }
@@ -244,14 +253,16 @@ function composedStore() {
 }
 
 let lastComposed = null;   // { captureTs, exam, ap } for the current capture
+let captureFailed = false; // last capture failed: every paste yields nothing until a good capture or Clear
 let currentCaptureTs = null;
 
-function effectiveExam() {
-    return (lastComposed && lastComposed.captureTs === currentCaptureTs && lastComposed.exam) || getExamSlot();
+function pasteState() {
+    const c = lastComposed && lastComposed.captureTs === currentCaptureTs ? lastComposed : null;
+    return { failed: captureFailed, hpi: slots.hpi, ap: slots.ap, examDotPhrase: getExamSlot(),
+             composedExam: c && c.exam, composedAp: c && c.ap };
 }
-function effectiveAp() {
-    return (lastComposed && lastComposed.captureTs === currentCaptureTs && lastComposed.ap) || slots.ap;
-}
+function effectiveExam() { return slotContent('exam', pasteState()) || null; }
+function effectiveAp() { return slotContent('ap', pasteState()) || null; }
 function libraryUiState() {
     const st = getLibraryClient().status();
     return { enabled: !!store.get('libraryEnabled'), source: st.source, tag: st.tag,
@@ -597,6 +608,8 @@ function cleanUpText(text) {
 // ── v2 Slot capture and paste ──────────────────────────────────────────────
 
 async function performCapture() {
+    // Empty the clipboard first so a copy that silently fails can't "capture" stale text.
+    clipboard.clear();
     // Step 1: Auto-trigger Ctrl+A + Ctrl+C in the active foreground window (Heidi)
     try {
         const psScript = [
@@ -617,17 +630,17 @@ async function performCapture() {
 
     // Step 3: Read and parse clipboard
     const text = clipboard.readText();
-    if (!text || !text.trim()) {
-        if (mainWindow) mainWindow.webContents.send('capture-result',
-            { success: false, reason: 'empty' });
-        return;
-    }
-
-    slots.hpi = extractHPI(text) || null;
-    slots.ap  = extractAP(text)  || null;
-    const exam = getExamSlot();
     const captureTs = String(Date.now());
     beginCapture(captureTs);
+    slots.hpi = (text && extractHPI(text)) || null;
+    slots.ap  = (text && extractAP(text))  || null;
+    captureFailed = isCaptureFailure({ text, hpi: slots.hpi, ap: slots.ap });
+    if (captureFailed) {
+        slots.hpi = null; slots.ap = null;
+        sendSlotState();
+        return;
+    }
+    const exam = getExamSlot();
     if (slots.ap) startLibraryFlow('heidi', captureTs);
 
     if (mainWindow) mainWindow.webContents.send('capture-result', {
@@ -657,7 +670,7 @@ async function performCapture() {
 
 function pasteSlot(slotName) {
     let content;
-    if      (slotName === 'hpi')  content = slots.hpi;
+    if      (slotName === 'hpi')  content = slotContent('hpi', pasteState()) || null;
     else if (slotName === 'exam') content = effectiveExam();
     else if (slotName === 'ap')   content = effectiveAp();
 
@@ -680,6 +693,8 @@ function pasteSlot(slotName) {
             }
         }, 100);
 
+    } else if (captureFailed) {
+        sendSlotState();   // re-show "Capture failed — nothing to paste"
     } else {
         if (mainWindow) mainWindow.webContents.send('slot-empty', slotName);
     }
@@ -914,12 +929,14 @@ ipcMain.handle('get-attestation-template', () => {
 });
 
 ipcMain.handle('get-slot-state', () => ({
+    captureFailed,
     hpiLoaded:   !!slots.hpi,
     apLoaded:    !!slots.ap,
-    examLoaded:  !!getExamSlot(),
+    examLoaded:  !!effectiveExam(),
     hpiPreview:  slots.hpi      ? slots.hpi.substring(0, 80)      : null,
     apPreview:   slots.ap       ? slots.ap.substring(0, 80)       : null,
-    examPreview: getExamSlot()  ? getExamSlot().substring(0, 80)  : null
+    examPreview: effectiveExam() ? effectiveExam().substring(0, 80) : null,
+    message:     captureFailed ? CAPTURE_FAILED_TEXT : null
 }));
 
 ipcMain.handle('set-window-collapsed', (event, collapsed) => {
@@ -956,7 +973,7 @@ ipcMain.handle('set-window-collapsed', (event, collapsed) => {
 ipcMain.handle('open-settings', () => { openSettings(); return true; });
 ipcMain.handle('trigger-capture', async () => { await performCapture(); return true; });
 ipcMain.handle('paste-slot', (e, name) => { pasteSlot(name); return true; });
-ipcMain.handle('clear-slots', () => { slots.hpi = null; slots.ap = null; lastComposed = null; currentCaptureTs = null; captureFlow.reset(); return true; });
+ipcMain.handle('clear-slots', () => { slots.hpi = null; slots.ap = null; lastComposed = null; currentCaptureTs = null; captureFailed = false; captureFlow.reset(); return true; });
 ipcMain.handle('save-exam-dot-phrase', (e, text) => {
     store.set('examDotPhrase', text); return true;
 });

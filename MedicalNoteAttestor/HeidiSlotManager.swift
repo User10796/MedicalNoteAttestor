@@ -11,6 +11,8 @@ class HeidiSlotManager: ObservableObject {
     @Published var isCapturing: Bool = false
     @Published var isLoadingBullets: Bool = false
     @Published var lastPastedSlot: Int? = nil
+    /// Last capture failed: every paste yields nothing until a good capture or Clear.
+    @Published private(set) var captureFailed: Bool = false
 
     // Criteria-library selections for the current capture only. Composition happens at paste
     // time (MNACore.composeExam / composeAP) so the A&P includes late-arriving action items.
@@ -38,15 +40,27 @@ class HeidiSlotManager: ObservableObject {
         apSlot = nil
         clearLibrary()
         captureId = nil
+        captureFailed = false
         // examSlot intentionally NOT cleared — persists always
     }
 
     /// New capture: a fresh id, and the previous patient's library text is dropped.
     func beginCapture() -> UUID {
         clearLibrary()
+        captureFailed = false
         let id = UUID()
         captureId = id
         return id
+    }
+
+    /// Failed capture: clear every slot so nothing (not even the exam dot-phrase) can be pasted.
+    func markCaptureFailed() {
+        hpiSlot = nil
+        apSlot = nil
+        clearLibrary()
+        captureFailed = true
+        NSSound(named: .init("Funk"))?.play()
+        FailureHUD.show(CaptureGate.failureMessage)
     }
 
     func setLibrarySelections(captureId id: UUID, exams: [String], dotphrases: [String], planLine: Int?) {
@@ -64,6 +78,7 @@ class HeidiSlotManager: ObservableObject {
 
     /// Exam paste: scribe exam (+ library exam text, deduped). Empty scribe exam + library -> library alone.
     var composedExam: String? {
+        if captureFailed { return nil }
         if libraryExams.isEmpty { return examSlot.isEmpty ? nil : examSlot }
         let out = MNACore.shared.composeExam(scribeExam: examSlot, libraryTexts: libraryExams)
         return out.isEmpty ? nil : out
@@ -71,6 +86,7 @@ class HeidiSlotManager: ObservableObject {
 
     /// A&P paste: A&P (+ library dot-phrases at the end or after the plan line).
     var composedAP: String? {
+        if captureFailed { return nil }
         guard let ap = apSlot else { return nil }
         if libraryDots.isEmpty { return ap }
         return MNACore.shared.composeAP(ap: ap, dotphrases: libraryDots,
@@ -78,12 +94,11 @@ class HeidiSlotManager: ObservableObject {
     }
 
     func writeToClipboard(slot: Int) {
-        let content: String?
-        switch slot {
-        case 1: content = hpiSlot
-        case 2: content = composedExam
-        case 3: content = composedAP
-        default: content = nil
+        let content = CaptureGate.content(slot: slot, failed: captureFailed, hpi: hpiSlot, exam: composedExam, ap: composedAP)
+        if captureFailed {
+            NSSound(named: .init("Funk"))?.play()
+            FailureHUD.show(CaptureGate.failureMessage)
+            return
         }
 
         if let text = content, !text.isEmpty {
