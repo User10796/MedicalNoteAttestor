@@ -6,6 +6,8 @@ const { createMtimePoller, parseSlotsJson } = require('./lib/slot-poller');
 const core = require('./lib/mna-core');
 const { createLibraryClient, writeUtf8NoBom } = require('./lib/library-client');
 const { createCaptureFlow, createComposedStore, createCaptureTracker, CAPTURE_FAILED_TEXT, isCaptureFailure, slotContent } = require('./lib/capture-flow');
+const { createFreedCapture, encodeFreedResult } = require('./lib/freed-capture');
+const profiles = require('./lib/source-profiles');
 
 // Anthropic model used for all Claude API calls.
 // The previous Sonnet 4 model (dated 20250514) was retired from the API on 2026-06-15;
@@ -61,6 +63,10 @@ function launchAHK() {
 function killAHK() {
     if (ahkProcess) { try { ahkProcess.kill(); } catch(e) {} ahkProcess = null; }
     if (slotsPoller) { slotsPoller.stop(); slotsPoller = null; }
+    if (freedPoller) { freedPoller.stop(); freedPoller = null; }
+    if (process.platform === 'win32') {   // no raw or parsed Freed note left on disk after quit
+        for (const f of ['freed-clip.txt', 'mna-freed-result.txt']) { try { fs.unlinkSync(path.join(getAhkPaths().dir, f)); } catch (e) {} }
+    }
     if (process.platform === 'win32') { try { composedStore().clear(); } catch (e) {} }
 }
 
@@ -116,6 +122,8 @@ function readSlotsFile() {
         const ts = data.timestamp != null ? String(data.timestamp) : null;
         const isNewCapture = captureTracker.observe(ts);  // the leftover file at launch is not a new capture
         if (isNewCapture) {
+            currentSource = 'heidi'; freedExam = '';
+            freedCapture.resetDuplicateGuard();           // the same Freed note captured later must re-adopt
             beginCapture(ts);                             // always drop the previous patient's library text
             captureFailed = isCaptureFailure({ failed: data.failed, hpi: slots.hpi, ap: slots.ap });
             if (captureFailed) { slots.hpi = null; slots.ap = null; }
@@ -258,7 +266,9 @@ let currentCaptureTs = null;
 
 function pasteState() {
     const c = lastComposed && lastComposed.captureTs === currentCaptureTs ? lastComposed : null;
-    return { failed: captureFailed, hpi: slots.hpi, ap: slots.ap, examDotPhrase: getExamSlot(),
+    // Exam slot: Heidi uses the exam dot-phrase; Freed uses its own Objective section (may be empty).
+    return { failed: captureFailed, hpi: slots.hpi, ap: slots.ap,
+             examDotPhrase: currentSource === 'freed' ? freedExam : getExamSlot(),
              composedExam: c && c.exam, composedAp: c && c.ap };
 }
 function effectiveExam() { return slotContent('exam', pasteState()) || null; }
@@ -291,10 +301,71 @@ function beginCapture(captureTs) {
 }
 
 function startLibraryFlow(source, captureTs) {
-    captureFlow.onCapture({ source, captureTs, ap: slots.ap, exam: getExamSlot() })
+    const exam = source === 'freed' ? freedExam : getExamSlot();
+    captureFlow.onCapture({ source, captureTs, ap: slots.ap, exam })
         .then(r => { if (r && r.skipped && r.reason !== 'superseded') sendSlotState(); })
         .catch(e => console.error('library flow failed:', e.message));
 }
+
+// ── Freed source (F7) ───────────────────────────────────────────────────────
+// F7: AHK reads the clipboard (Freed's "Copy all"; no synthetic keystrokes) and writes it to
+// freed-clip.txt as "MNA1 <captureTs>\r\n<text>" (UTF-8-RAW). We poll that file every 250 ms like
+// the slot file, run normalize -> duplicate guard -> shape validation -> parse, and write
+// mna-freed-result.txt. AHK adopts all three slots from it at once, or shows the notice.
+// The source profile has actionItems: false, so no MNA action items are generated.
+let currentSource = 'heidi';
+let freedExam = '';
+let freedPoller = null;
+let lastFreedTs;          // undefined until watching starts; a leftover file at launch is ignored
+const FREED_CLIP = 'freed-clip.txt';
+const FREED_RESULT = 'mna-freed-result.txt';
+
+const freedCapture = createFreedCapture({
+    profile: profiles.get('freed'),
+    writeResult: (r) => writeUtf8NoBom(path.join(getAhkPaths().dir, FREED_RESULT), encodeFreedResult(r)),
+    notify: (message) => { if (mainWindow) mainWindow.webContents.send('source-notice', message); }
+});
+
+function watchFreedClip() {
+    const clip = path.join(getAhkPaths().dir, FREED_CLIP);
+    lastFreedTs = null;
+    try {   // a clip left over from before launch is never processed (AHK restarted; nothing is pending)
+        const m = /^MNA1 (\S+)\r?\n/.exec(fs.readFileSync(clip, 'utf8').replace(/^\uFEFF/, ''));
+        if (m) lastFreedTs = m[1];
+    } catch (e) { /* no file */ }
+    freedPoller = createMtimePoller(clip, readFreedClip).start();
+}
+
+// Returns false (poller retries next tick) on a partial file or a failed result write.
+function readFreedClip() {
+    const clip = path.join(getAhkPaths().dir, FREED_CLIP);
+    try {
+        if (!fs.existsSync(clip)) return true;
+        const raw = fs.readFileSync(clip, 'utf8').replace(/^\uFEFF/, '');
+        const m = /^MNA1 (\S+)\r?\n/.exec(raw);
+        if (!m) return false;
+        const ts = m[1];
+        if (ts === lastFreedTs) return true;
+        const r = freedCapture.process({ captureTs: ts, raw: raw.slice(m[0].length) });
+        lastFreedTs = ts;
+        try { fs.unlinkSync(clip); } catch (e) { /* AHK rewrites it on the next F7 */ }
+        if (r.status === 'ok') {
+            slots.hpi = r.slots.hpi || null;
+            slots.ap = r.slots.ap || null;
+            freedExam = r.slots.exam;
+            currentSource = 'freed';
+            captureFailed = false;
+            beginCapture(ts);
+            sendSlotState();
+            if (slots.ap) startLibraryFlow('freed', ts);
+        }
+        return true;
+    } catch (e) {
+        console.error('Freed capture failed:', e.message);   // never log clipboard text
+        return false;
+    }
+}
+// ── end Freed source
 
 // ── Payer / procedure picker ────────────────────────────────────────────────
 
@@ -347,11 +418,13 @@ ipcMain.on('picker-done', (e, answer) => {
 // Stored as canonical strings ("Ctrl+Shift+F10") under the existing config keys.
 // Windows: AHK owns the hotkeys and re-reads hotkeys.json (250 ms poll).
 
-const HOTKEY_KEYS = { capture: 'captureHotkey', pasteHpi: 'pasteHotkey1', pasteExam: 'pasteHotkey2', pasteAp: 'pasteHotkey3' };
+const HOTKEY_KEYS = { capture: 'captureHotkey', pasteHpi: 'pasteHotkey1', pasteExam: 'pasteHotkey2', pasteAp: 'pasteHotkey3',
+                      captureFreed: 'freedCaptureHotkey' };
+const hotkeyKeysFor = (platform) => Object.fromEntries(core.hotkeyActionsFor(platform).map(a => [a.id, HOTKEY_KEYS[a.id]]));
 
 function currentHotkeys() {
     const raw = {};
-    for (const [action, key] of Object.entries(HOTKEY_KEYS)) raw[action] = store.get(key);
+    for (const [action, key] of Object.entries(hotkeyKeysFor(process.platform))) raw[action] = store.get(key);
     return core.validateHotkeys(raw, process.platform).bindings;
 }
 
@@ -359,7 +432,7 @@ function writeHotkeysJson() {
     if (process.platform !== 'win32') return null;
     const b = currentHotkeys();
     const out = { version: 1, written_at: new Date().toISOString(), accelerators: b };
-    for (const action of Object.keys(HOTKEY_KEYS)) out['ahk_' + action] = core.toAhkHotkey(b[action]);
+    for (const action of Object.keys(hotkeyKeysFor(process.platform))) out['ahk_' + action] = core.toAhkHotkey(b[action]);
     try { writeUtf8NoBom(path.join(getAhkPaths().dir, 'hotkeys.json'), JSON.stringify(out, null, 2)); return null; }
     catch (e) { console.error('Failed to write hotkeys.json:', e.message); return e.message; }
 }
@@ -654,8 +727,8 @@ async function performCapture() {
         bulletsLoading: !!slots.ap
     });
 
-    // Step 4: Fire bullet enrichment in background
-    if (slots.ap) {
+    // Step 4: Fire bullet enrichment in background (Heidi profile: actionItems true, unchanged)
+    if (slots.ap && profiles.get('heidi').actionItems) {
         const originalAP = slots.ap;
         extractActionItems(originalAP).then(bullets => {
             if (bullets && bullets.trim() && slots.ap === originalAP) {
@@ -883,12 +956,12 @@ ipcMain.handle('library-set-options', (e, o) => {
     return libraryStatusForUi();
 });
 
-ipcMain.handle('get-hotkeys', () => ({ bindings: currentHotkeys(), defaults: core.defaultHotkeys(),
-    actions: core.HOTKEY_ACTIONS.map(a => ({ id: a.id, label: a.label })), platform: process.platform }));
+ipcMain.handle('get-hotkeys', () => ({ bindings: currentHotkeys(), defaults: core.defaultHotkeys(process.platform),
+    actions: core.hotkeyActionsFor(process.platform).map(a => ({ id: a.id, label: a.label })), platform: process.platform }));
 ipcMain.handle('save-hotkeys', (e, bindings) => {
     const v = core.validateHotkeys(bindings || {}, process.platform);
     if (!v.ok) return v;
-    for (const [action, key] of Object.entries(HOTKEY_KEYS)) store.set(key, v.bindings[action]);
+    for (const [action, key] of Object.entries(hotkeyKeysFor(process.platform))) store.set(key, v.bindings[action]);
     const writeError = writeHotkeysJson();
     registerHotkeys();
     sendSlotState();
@@ -973,7 +1046,11 @@ ipcMain.handle('set-window-collapsed', (event, collapsed) => {
 ipcMain.handle('open-settings', () => { openSettings(); return true; });
 ipcMain.handle('trigger-capture', async () => { await performCapture(); return true; });
 ipcMain.handle('paste-slot', (e, name) => { pasteSlot(name); return true; });
-ipcMain.handle('clear-slots', () => { slots.hpi = null; slots.ap = null; lastComposed = null; currentCaptureTs = null; captureFailed = false; captureFlow.reset(); return true; });
+ipcMain.handle('clear-slots', () => {
+    slots.hpi = null; slots.ap = null; lastComposed = null; currentCaptureTs = null; captureFailed = false; captureFlow.reset();
+    currentSource = 'heidi'; freedExam = ''; freedCapture.resetDuplicateGuard();
+    return true;
+});
 ipcMain.handle('save-exam-dot-phrase', (e, text) => {
     store.set('examDotPhrase', text); return true;
 });
@@ -1172,7 +1249,7 @@ function migrateHotkeys() {
     }
     // Invalid stored bindings fall back to defaults (validateHotkeys fills them).
     const v = currentHotkeys();
-    for (const [action, key] of Object.entries(HOTKEY_KEYS)) if (store.get(key) !== v[action]) store.set(key, v[action]);
+    for (const [action, key] of Object.entries(hotkeyKeysFor(process.platform))) if (store.get(key) !== v[action]) store.set(key, v[action]);
 }
 migrateHotkeys();
 
@@ -1189,6 +1266,7 @@ app.whenReady().then(() => {
             writeHotkeysJson();
             launchAHK();
             watchSlotsFile();
+            watchFreedClip();
         }
     } catch (err) {
         const { dialog } = require('electron');

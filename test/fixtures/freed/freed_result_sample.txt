@@ -1,0 +1,12 @@
+MNA-FREED1 12345 ok
+<<MNA:HPI>>
+HPI line 1
+HPI line 2
+<<MNA:EXAM>>
+
+<<MNA:AP>>
+1. Problem
+- Bullet
+
+Follow-up:
+- RTC

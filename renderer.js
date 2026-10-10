@@ -369,6 +369,13 @@ window.electronAPI.onCaptureResult((data) => {
     setHeidiStatus(ok ? `\u2713 Captured: ${loaded}${lib}` : '\u26A0\uFE0F No sections found', ok ? 'success' : 'error');
 });
 
+// Freed capture notices ("Already captured", "Clipboard doesn't look like a Freed note...").
+// They never contain clipboard text. Slots are unchanged when one of these is shown.
+window.electronAPI.onSourceNotice((message) => {
+    setHeidiStatus((/^Already captured/.test(message) ? '\u2139\uFE0F ' : '\u26A0\uFE0F ') + message,
+                   /^Already captured/.test(message) ? '' : 'error');
+});
+
 window.electronAPI.onBulletsReady((data) => {
     const apIcon = document.getElementById('ap-icon');
     const apPrev = document.getElementById('ap-preview');

@@ -22,3 +22,8 @@
   AHK pastes them only for the capture it holds. Hotkeys: Electron writes `hotkeys.json`, AHK polls it (250 ms).
 - macOS release build: `scripts/build-macos.sh` (embeds the library snapshot + build stamp, DMG in `dist/`).
 - Test harness for the picker UI: serve the repo root statically and open `test/ui/picker-harness.html`.
+- Scribe sources are data (`lib/source-profiles.js`): Heidi = F8 select-all-and-copy; Freed = F7 clipboard-only
+  (Sterling clicks Freed's "Copy all"), parsed by `lib/freed-parser.js`, `actionItems: false`. Spec:
+  SPEC_freed_source_standalone (2026-10-10). F7 path: AHK writes `freed-clip.txt` -> Electron polls, validates,
+  dedupes (SHA-256, in memory) and writes `mna-freed-result.txt` -> AHK adopts all three slots at once. Fixtures
+  in `test/fixtures/freed/` are synthetic; never commit real Freed output.

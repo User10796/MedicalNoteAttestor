@@ -182,7 +182,16 @@ test('empty scribe exam + library text -> library text alone; both empty -> empt
     assert.strictEqual(core.composeExam('', []), '');
 });
 
-test('Freed: empty Freed exam + library text pastes library text; both empty no-op', { skip: 'TODO: Freed source not implemented (spec to be rewritten); the source-agnostic composeExam rule is covered above' }, () => {});
+test('Freed: empty Freed exam + library text pastes library text; both empty no-op', () => {
+    const freed = require('../lib/freed-parser');
+    const fsx = require('fs');
+    const raw = fsx.readFileSync(path.join(FIX, 'freed', 'freed_sample_02_no_exam.txt'), 'utf8');
+    const parsed = freed.parseFreed(freed.normalize(raw));
+    assert.strictEqual(parsed.slots.exam, '', 'Freed exam N/A -> empty slot');
+    const lib = core.composeOutputs(bundle, 'medicare_ab_ga', [row('lumbar_mbb', 'bilateral')], parsed.slots.exam, parsed.slots.ap).exam;
+    assert.ok(lib && lib.startsWith('Lumbar spine and lower extremities:'), 'library exam alone');
+    assert.strictEqual(core.composeExam(parsed.slots.exam, []), '', 'both empty -> silent no-op');
+});
 
 // ── payer picker ─────────────────────────────────────────────────────────────────────────────
 test('payer typeahead covers names and aliases', () => {

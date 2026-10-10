@@ -9,6 +9,9 @@ global slotAP  := ""
 global examDotPhrase := ""
 global lastCaptureTs := ""          ; A_TickCount of the capture these slots belong to
 global captureFailed := false       ; last F8 failed: F9/F10/F11 paste nothing until a good capture
+global activeSource := "heidi"      ; which scribe filled the slots: "heidi" (F8) or "freed" (F7)
+global slotFreedExam := ""          ; Freed's own exam (Objective); may be empty -> F10 silent no-op
+global pendingFreedTs := ""         ; F7 pressed; waiting for Electron's mna-freed-result.txt
 global activeHotkeys := Map()       ; action -> AHK key currently registered
 global lastHotkeysText := "<unread>"
 global HPI_HEADERS := ["Interval history, HPI:", "History of Present Illness (HPI):", "History of Present Illness:"]
@@ -24,6 +27,9 @@ LoadConfig()
 ; 250 ms (change notifications don't fire on UNC paths) and re-register on change.
 CheckHotkeysFile()
 SetTimer(CheckHotkeysFile, 250)
+
+; Freed (F7): adopt Electron's parsed result for the pending capture (250 ms, like the slot file).
+SetTimer(CheckFreedResult, 250)
 
 ; ── Hotkeys ───────────────────────────────────────────────────────────────────
 
@@ -48,7 +54,9 @@ PgDn:: {
 ; F8-F11 defaults are registered dynamically (see ApplyHotkeys); the legacy PgUp/PgDn above stay fixed.
 
 DoCapture() {
-    global slotHPI, slotAP, lastCaptureTs, captureFailed
+    global slotHPI, slotAP, lastCaptureTs, captureFailed, activeSource, pendingFreedTs
+    pendingFreedTs := ""          ; a newer Heidi capture supersedes a Freed capture still being parsed
+    activeSource := "heidi"
     LoadConfig()
     A_Clipboard := ""
     Send "^a^c"
@@ -107,11 +115,80 @@ DoPasteHpi() {
 }
 
 ; Exam: library-composed text for this capture if Sterling confirmed a payer/procedure,
-; otherwise the exam dot-phrase. Nothing after a failed capture.
+; otherwise the exam dot-phrase (Heidi) or Freed's own exam. Nothing after a failed capture.
+; Freed with no exam (empty or N/A) and no library text: silent no-op (no paste, no beep).
 DoPasteExam() {
-    global examDotPhrase, lastCaptureTs, captureFailed
+    global examDotPhrase, lastCaptureTs, captureFailed, activeSource, slotFreedExam
     composed := MnaReadComposed(GetRuntimeDir() "\mna-exam.txt", lastCaptureTs)
+    if (activeSource = "freed") {
+        content := MnaContentToPaste(captureFailed, composed, slotFreedExam)
+        if (content != "")
+            PasteText(content)
+        return
+    }
     PasteOrBeep(MnaContentToPaste(captureFailed, composed, examDotPhrase))
+}
+
+; F7: Freed. Sterling clicks Freed's own "Copy all" first; Freed has no usable Ctrl+A, so this
+; sends NO keystrokes and only reads the clipboard. Electron validates and parses it; the slots
+; change only when CheckFreedResult adopts a valid result (all three at once).
+DoCaptureFreed() {
+    global pendingFreedTs
+    text := A_Clipboard
+    if (Trim(text, " `t`r`n") = "") {
+        ShowNotice(MnaFreedInvalidText())
+        SoundBeep 300, 200
+        return
+    }
+    ts := A_TickCount
+    path := GetRuntimeDir() "\freed-clip.txt"
+    try {
+        FileDelete path
+    }
+    try {
+        FileAppend "MNA1 " ts "`r`n" text, path, "UTF-8-RAW"
+        pendingFreedTs := ts
+    } catch as e {
+        MnaLog(GetRuntimeDir(), "freed-clip.txt write failed (" e.Message ")")
+        SoundBeep 300, 300
+    }
+}
+
+CheckFreedResult() {
+    global pendingFreedTs, slotHPI, slotAP, slotFreedExam, activeSource, lastCaptureTs, captureFailed
+    if (pendingFreedTs = "")
+        return
+    path := GetRuntimeDir() "\mna-freed-result.txt"
+    if !FileExist(path)
+        return
+    try raw := FileRead(path, "UTF-8")
+    catch
+        return
+    r := MnaParseFreedResult(raw, pendingFreedTs)
+    if !IsObject(r)
+        return
+    ts := pendingFreedTs
+    pendingFreedTs := ""
+    if (r["kind"] = "notice") {   ; invalid note or "Already captured": slots unchanged
+        ShowNotice(r["message"])
+        SoundBeep 300, 150
+        return
+    }
+    ; Replace all three slots at once; an empty section empties its slot (no stale exam).
+    slotHPI := r["hpi"]
+    slotAP := r["ap"]
+    slotFreedExam := r["exam"]
+    activeSource := "freed"
+    lastCaptureTs := ts
+    captureFailed := false
+    SoundBeep 880, 80
+    Sleep 60
+    SoundBeep 880, 80
+}
+
+ShowNotice(msg) {
+    ToolTip(msg)
+    SetTimer(() => ToolTip(), -4000)
 }
 
 ; A&P: A&P + library dot-phrase(s) for this capture if confirmed, otherwise the A&P.
@@ -128,6 +205,7 @@ RunAction(action) {
         case "pasteHpi":  DoPasteHpi()
         case "pasteExam": DoPasteExam()
         case "pasteAp":   DoPasteAp()
+        case "captureFreed": DoCaptureFreed()
     }
 }
 
