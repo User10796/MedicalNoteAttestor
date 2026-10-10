@@ -10,7 +10,8 @@ const { createFreedCapture, encodeFreedResult, decodeFreedResult } = require('..
 const profiles = require('../lib/source-profiles');
 
 const DIR = path.join(__dirname, 'fixtures', 'freed');
-const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
+const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');      // as checked out (CRLF on Windows CI)
+const readLF = (f) => read(f).replace(/\r\n/g, '\n');                   // for tests that edit the text
 // §10.1: compare after the §6 normalization (CRLF -> LF, BOM, trailing whitespace) and EOF trim.
 const norm = (s) => freed.normalize(s).replace(/\n+$/, '');
 
@@ -41,7 +42,7 @@ for (const [sample, hasExam] of [['freed_sample_01', true], ['freed_sample_02_no
 
 test('CRLF and BOM clipboard text parses identically (Windows clipboard)', () => {
     const { cap } = harness();
-    const raw = '﻿' + read('freed_sample_01.txt').replace(/\n/g, '\r\n').replace(/\r\n/g, '  \r\n');
+    const raw = '﻿' + readLF('freed_sample_01.txt').replace(/\n/g, '\r\n').replace(/\r\n/g, '  \r\n');
     const r = cap.process({ captureTs: '1', raw });
     assert.strictEqual(r.status, 'ok');
     assert.strictEqual(norm(r.slots.ap), norm(read('freed_sample_01.F11.expected.txt')));
@@ -79,7 +80,7 @@ test('capturing sample 01 twice: second is "Already captured", no re-parse, slot
     cap.process({ captureTs: '1', raw: read('freed_sample_01.txt') });
     const before = JSON.stringify(cap.slots());
     const parses = cap.stats().parses;
-    const r = cap.process({ captureTs: '2', raw: read('freed_sample_01.txt').replace(/\n/g, '\r\n') });
+    const r = cap.process({ captureTs: '2', raw: readLF('freed_sample_01.txt').replace(/\n/g, '\r\n') });
     assert.strictEqual(r.status, 'duplicate');
     assert.strictEqual(cap.stats().parses, parses, 'not re-parsed');
     assert.strictEqual(JSON.stringify(cap.slots()), before, 'slots unchanged');
@@ -120,7 +121,7 @@ const HEIDI_NOTE = [
     'Lumbar spondylosis. Proceed with bilateral L4-5, L5-S1 medial branch blocks.',
     'Return in 4 weeks.'
 ].join('\n');
-const s01 = () => read('freed_sample_01.txt');
+const s01 = () => readLF('freed_sample_01.txt');
 const INVALID = {
     'missing Objective divider': () => s01().replace(/^Objective\n/m, ''),
     'dividers out of order': () => {
