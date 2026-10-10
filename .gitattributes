@@ -1,0 +1,2 @@
+test/fixtures/freed/freed_result_sample.txt -text
+test/fixtures/freed/freed_sample_*.txt text eol=lf

@@ -23,6 +23,7 @@ DirCreate(dir)
 ; defaults unchanged
 d := MnaDefaultHotkeys()
 Check(d["capture"] = "F8" && d["pasteHpi"] = "F9" && d["pasteExam"] = "F10" && d["pasteAp"] = "F11", "defaults are F8/F9/F10/F11")
+Check(d["captureFreed"] = "F7", "Freed capture default is F7")
 
 ; valid config, rebinding F10 to Ctrl+Shift+F10
 good := '{"version": 1, "accelerators": {"pasteExam": "Ctrl+Shift+F10"}, "ahk_capture": "F8", "ahk_pasteHpi": "F9", "ahk_pasteExam": "^+F10", "ahk_pasteAp": "F11"}'
@@ -70,6 +71,24 @@ Check(!FileExist(dir "\mna-exam.txt") && !FileExist(dir "\mna-ap.txt"), "failed 
 MnaClearComposed(dir)
 Check(true, "clearing when nothing exists does not throw")
 Check(InStr(MnaCaptureFailedText(), "Capture failed") = 1 && InStr(MnaCaptureFailedText(), "nothing to paste"), "failure message text")
+
+; ── Freed (F7) ──
+fixture := A_ScriptDir "\..\..\test\fixtures\freed\freed_result_sample.txt"
+sample := FileRead(fixture, "UTF-8")
+r := MnaParseFreedResult(sample, "12345")
+Check(IsObject(r) && r["kind"] = "ok", "parses Electron's result file (shared contract fixture)")
+Check(IsObject(r) && r["hpi"] = "HPI line 1`r`nHPI line 2", "result: HPI slot")
+Check(IsObject(r) && r["exam"] = "", "result: empty exam slot is explicit (no stale exam)")
+Check(IsObject(r) && r["ap"] = "1. Problem`r`n- Bullet`r`n`r`nFollow-up:`r`n- RTC", "result: A&P slot")
+Check(MnaParseFreedResult(sample, "99999") = "", "result for another capture is ignored")
+Check(MnaParseFreedResult(sample, "") = "", "no pending capture -> ignored")
+Check(MnaParseFreedResult("garbage", "12345") = "", "garbage result ignored")
+n := MnaParseFreedResult("MNA-FREED1 777 notice`r`n" MnaFreedInvalidText(), "777")
+Check(IsObject(n) && n["kind"] = "notice" && n["message"] = MnaFreedInvalidText(), "notice result")
+old := '{"version": 1, "ahk_capture": "F8", "ahk_pasteHpi": "F9", "ahk_pasteExam": "F10", "ahk_pasteAp": "F11"}'
+mo := MnaParseHotkeysJson(old)
+Check(IsObject(mo) && mo["captureFreed"] = "F7", "older hotkeys.json without F7 still valid; Freed gets F7")
+Check(MnaParseHotkeysJson(StrReplace(old, '"F9"', '"F7"')) = "", "binding another action to F7 is a duplicate")
 
 MnaLog(dir, "test log line")
 Check(InStr(FileRead(dir "\mna-ahk.log", "UTF-8"), "test log line") > 0, "log written")
