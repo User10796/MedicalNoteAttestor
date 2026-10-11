@@ -44,6 +44,14 @@ struct SettingsView: View {
         Form {
             HotkeySettingsSection()
 
+            Section("Action items (Heidi)") {
+                Toggle("After a Heidi capture, add action items to the A&P using Claude", isOn: $settings.heidiActionItems)
+                Text(settings.hasClaudeAPIKey
+                     ? "Off by default. When on, the A&P text is sent to Anthropic's Claude API after each Heidi capture."
+                     : "Off by default. Needs your Claude API key (Settings \u{2192} Claude API); without it nothing is sent.")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+
             Section("Capture Timing") {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
@@ -90,12 +98,7 @@ struct SettingsView: View {
 
     private var claudeAPITab: some View {
         Form {
-            Section("API Key") {
-                SecureField("Custom API key (optional)", text: $settings.claudeAPIKey)
-                    .font(.system(size: 12, design: .monospaced))
-                Text("Leave blank to use the built-in key.")
-                    .font(.caption).foregroundColor(.secondary)
-            }
+            ClaudeKeySection()
 
             Section("Custom Instructions") {
                 Text("Add custom instructions that will be appended to the Claude API prompt when formatting medical notes.")
@@ -160,6 +163,29 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+// MARK: - Claude API key (Keychain; write-only from the UI)
+
+struct ClaudeKeySection: View {
+    @ObservedObject var settings = SettingsManager.shared
+    @State private var newKey = ""
+
+    var body: some View {
+        Section("API Key") {
+            SecureField(settings.hasClaudeAPIKey ? "Key saved \u{2014} paste a new one to replace" : "Paste your Claude API key", text: $newKey)
+                .font(.system(size: 12, design: .monospaced))
+            HStack {
+                Button("Save key") { settings.setClaudeAPIKey(newKey); newKey = "" }.disabled(newKey.isEmpty)
+                Button("Remove key") { settings.setClaudeAPIKey("") }.disabled(!settings.hasClaudeAPIKey)
+                Spacer()
+                Text(settings.hasClaudeAPIKey ? "Key saved in Keychain" : "No key")
+                    .font(.caption).foregroundColor(settings.hasClaudeAPIKey ? .green : .secondary)
+            }
+            Text("Stored in the macOS Keychain; never shown again. There is no built-in key: without your key, Claude features (Attestor Select, action items) are unavailable.")
+                .font(.caption).foregroundColor(.secondary)
+        }
     }
 }
 

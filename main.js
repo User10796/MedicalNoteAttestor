@@ -8,6 +8,7 @@ const { createLibraryClient, writeUtf8NoBom } = require('./lib/library-client');
 const { createCaptureFlow, createComposedStore, createCaptureTracker, CAPTURE_FAILED_TEXT, isCaptureFailure, slotContent } = require('./lib/capture-flow');
 const { createFreedCapture, encodeFreedResult } = require('./lib/freed-capture');
 const profiles = require('./lib/source-profiles');
+const { createSecretStore } = require('./lib/secrets');
 
 // Anthropic model used for all Claude API calls.
 // The previous Sonnet 4 model (dated 20250514) was retired from the API on 2026-06-15;
@@ -148,7 +149,7 @@ const DEFAULTS = {
     libraryInsertion: 'end',     // 'end' | 'after_plan_line'
     libraryTokenEnc: '',         // safeStorage-encrypted (DPAPI on Windows); never plaintext
     payerRecents: [],
-    claudeApiKey: '',
+    claudeApiKeyEnc: '',         // safeStorage-encrypted (DPAPI on Windows); never plaintext
     customClaudeInstructions: '',
     customAttestationTemplate: '',
     windowBounds: { width: 400, height: 500 }
@@ -210,8 +211,13 @@ function saveConfig(data) {
 const configData = loadConfig();
 const store = {
     get: (key) => configData[key] !== undefined ? configData[key] : DEFAULTS[key],
-    set: (key, value) => { configData[key] = value; saveConfig(configData); }
+    set: (key, value) => { if (value === undefined) delete configData[key]; else configData[key] = value; saveConfig(configData); }
 };
+
+// Claude API key: encrypted with safeStorage. There is no built-in key and no fallback; without the
+// user's key, Claude features are unavailable. Migration of an older plain-text key runs at startup.
+const secrets = createSecretStore({ store, safeStorage, log: (m) => console.log(m) });
+const getClaudeKey = () => secrets.get('claudeApiKey');
 
 // In-memory note slots — reset on quit (patient safety)
 const slots = { hpi: null, ap: null };
@@ -932,7 +938,8 @@ ipcMain.handle('get-settings', () => {
         pasteHotkey2:             store.get('pasteHotkey2'),
         pasteHotkey3:             store.get('pasteHotkey3'),
         examDotPhrase:            store.get('examDotPhrase'),
-        claudeApiKey:             store.get('claudeApiKey'),
+        hasClaudeApiKey:          secrets.has('claudeApiKey'),   // never the key itself
+        secureStorageAvailable:   secrets.available(),
         customClaudeInstructions: store.get('customClaudeInstructions'),
         customAttestationTemplate:store.get('customAttestationTemplate')
     };
@@ -992,7 +999,12 @@ ipcMain.handle('save-settings', (e, settings) => {
     store.set('apHotkey',                 settings.apHotkey);
     store.set('heidiCopyEnabled',         settings.heidiCopyEnabled);
     store.set('examDotPhrase',            settings.examDotPhrase);
-    store.set('claudeApiKey',             settings.claudeApiKey);
+    // The key is write-only from the renderer: a new key is encrypted; clearClaudeApiKey removes it.
+    if (settings.clearClaudeApiKey) secrets.set('claudeApiKey', '');
+    else if (settings.claudeApiKey && String(settings.claudeApiKey).trim()) {
+        const r = secrets.set('claudeApiKey', settings.claudeApiKey);
+        if (!r.ok) console.error('Claude key not saved:', r.error);
+    }
     store.set('customClaudeInstructions', settings.customClaudeInstructions);
     store.set('customAttestationTemplate',settings.customAttestationTemplate);
     writeAhkConfig(settings.examDotPhrase || '');
@@ -1074,8 +1086,6 @@ ipcMain.handle('save-exam-dot-phrase', (e, text) => {
 });
 
 // ── Claude API ──────────────────────────────────────────────────────────────
-
-const BUILT_IN_API_KEY = ''; // Removed — set your key in Settings → Claude API
 
 const BASE_SYSTEM_PROMPT = `You are a medical note reformatter. Transform the input according to these rules:
 
@@ -1164,7 +1174,7 @@ FORMAT:
 - If no action items are found, output nothing — return an empty string`;
 
 async function extractActionItems(apText) {
-    const apiKey = (store.get('claudeApiKey') || '').trim() || BUILT_IN_API_KEY;
+    const apiKey = getClaudeKey();
 
     if (!apiKey || apiKey === '') {
         console.error('extractActionItems: No API key available');
@@ -1218,7 +1228,7 @@ Plan:
 `;
 
 async function callClaudeAPI(text, customInstructions) {
-    const apiKey = store.get('claudeApiKey') || BUILT_IN_API_KEY;
+    const apiKey = getClaudeKey();
     if (!apiKey || !apiKey.trim()) {
         return { success: false, error: 'No API key set. Go to Settings → Claude API to enter your key.' };
     }
@@ -1273,6 +1283,8 @@ migrateHotkeys();
 
 app.whenReady().then(() => {
     try {
+        // Older builds kept the Claude key in plain text; encrypt it and delete the plain copy.
+        console.log('secrets: claudeApiKey migration -> ' + secrets.migrate('claudeApiKey'));
         createMainWindow();
         registerHotkeys();
         getLibraryClient().loadLocal();

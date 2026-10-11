@@ -155,7 +155,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         slotManager.hpiSlot = hpi
         slotManager.apSlot  = ap
 
-        if SourceProfile.heidi.actionItems { Task { await slotManager.appendActionItems() } }
+        if ActionItemsPolicy.enabled(source: .heidi, heidiSetting: SettingsManager.shared.heidiActionItems) {
+            Task { await slotManager.appendActionItems() }
+        }
         await runLibraryFlow(captureId: captureId)
     }
 
@@ -174,7 +176,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             FailureHUD.show(FreedCapture.noticeDuplicate, style: .info)
         case .ok(let slots):
             let captureId = slotManager.adoptFreed(slots)
-            if SourceProfile.freed.actionItems { Task { await slotManager.appendActionItems() } }
+            if ActionItemsPolicy.enabled(source: .freed, heidiSetting: SettingsManager.shared.heidiActionItems) {
+                Task { await slotManager.appendActionItems() }
+            }
             // Open the picker only for a planned procedure (rule-based, local; same rule as Windows).
             // Otherwise no picker, no notice, no sound; "Open payer picker" opens it manually.
             if let ap = slotManager.apSlot, MNACore.shared.freedProcedurePlanned(ap: ap) {

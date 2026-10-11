@@ -8,7 +8,7 @@ class SettingsManager: ObservableObject {
     private let customClaudeInstructionsKey = "customClaudeInstructions"
     private let customAttestationTemplateKey = "customAttestationTemplate"
     private let captureDelayKey   = "captureDelay"
-    private let claudeAPIKeyKey   = "claudeAPIKey"
+    private let heidiActionItemsKey = "heidiActionItems"
 
     // Active hotkey bindings for display ("F8", "Ctrl+Shift+F10"). Read-only here: Settings saves
     // through AppDelegate.hotkeys (validated), and these refresh on every UserDefaults change.
@@ -33,8 +33,20 @@ class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(captureDelay, forKey: captureDelayKey) }
     }
 
-    @Published var claudeAPIKey: String {
-        didSet { UserDefaults.standard.set(claudeAPIKey, forKey: claudeAPIKeyKey) }
+    /// Whether a Claude API key is stored (Keychain). The key itself is never published or shown.
+    @Published private(set) var hasClaudeAPIKey: Bool = false
+
+    /// Heidi action items (sends the A&P to Claude after a Heidi capture). Off by default.
+    @Published var heidiActionItems: Bool {
+        didSet { UserDefaults.standard.set(heidiActionItems, forKey: heidiActionItemsKey) }
+    }
+
+    /// Save (or, with "", remove) the user's Claude API key in the Keychain.
+    @discardableResult
+    func setClaudeAPIKey(_ value: String) -> Bool {
+        let ok = ClaudeKey.set(value)
+        hasClaudeAPIKey = ClaudeKey.current() != nil
+        return ok
     }
 
     @Published var customClaudeInstructions: String {
@@ -73,10 +85,14 @@ Plan:
 
         // Load saved values or use defaults
         captureDelay  = UserDefaults.standard.object(forKey: captureDelayKey) as? Double ?? 0.7
-        claudeAPIKey  = UserDefaults.standard.string(forKey: claudeAPIKeyKey) ?? ""
+        heidiActionItems = UserDefaults.standard.object(forKey: heidiActionItemsKey) as? Bool ?? SourceProfile.heidi.actionItems
 
         self.customClaudeInstructions = UserDefaults.standard.string(forKey: customClaudeInstructionsKey) ?? ""
         self.customAttestationTemplate = UserDefaults.standard.string(forKey: customAttestationTemplateKey) ?? ""
+
+        // Plain-text keys from older builds move into the Keychain and are deleted from UserDefaults.
+        ClaudeKey.migrate(defaults: .standard)
+        hasClaudeAPIKey = ClaudeKey.current() != nil
 
         refreshHotkeyLabels()
         defaultsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification,

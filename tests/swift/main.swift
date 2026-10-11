@@ -219,8 +219,8 @@ check(FreedParser.classify("Assessment and Plan:") == .subheader, "classify Asse
 // Action items: none for Freed (profile), Heidi unchanged.
 check(SourceProfile.freed.actionItems == false && SourceProfile.freed.captureMethod == "clipboardRead" && SourceProfile.freed.captureKey == "F7",
       "Freed profile: F7, clipboard read, no action items")
-check(SourceProfile.heidi == SourceProfile(id: .heidi, captureKey: "F8", captureMethod: "selectAllCopy", parser: "heidi", actionItems: true),
-      "Heidi profile unchanged")
+check(SourceProfile.heidi == SourceProfile(id: .heidi, captureKey: "F8", captureMethod: "selectAllCopy", parser: "heidi", actionItems: false),
+      "Heidi profile: action items off by default (2026-10-10)")
 // Paste decisions: Heidi exactly as before; Freed empty exam is a silent no-op.
 check(CaptureGate.decide(slot: 2, failed: false, source: .heidi, hpi: "h", exam: nil, ap: "a") == .beep, "Heidi empty exam still beeps")
 check(CaptureGate.decide(slot: 2, failed: false, source: .freed, hpi: "h", exam: nil, ap: "a") == .silent, "Freed empty exam: silent no-op")
@@ -238,9 +238,9 @@ let appSrc = src("MedicalNoteAttestorApp.swift"), slotSrc = src("HeidiSlotManage
 let f7 = body(appSrc, from: "func performFreedCapture()")
 check(f7.contains("NSPasteboard.general.string(forType: .string)") && !f7.contains("copyFullDocument") && !f7.contains("CGEvent"),
       "F7 reads the pasteboard only (no synthetic keystrokes)")
-check(f7.contains("if SourceProfile.freed.actionItems {") && !SourceProfile.freed.actionItems
+check(f7.contains("ActionItemsPolicy.enabled(source: .freed,") && !ActionItemsPolicy.enabled(source: .freed, heidiSetting: true)
       && f7.components(separatedBy: "appendActionItems").count == 2,
-      "F7: the only action-item call is behind the Freed profile, which is off")
+      "F7: the only action-item call is behind the Freed policy, which is always off")
 check(appSrc.contains(".captureFreed: { Task { @MainActor in await AppDelegate.shared?.performFreedCapture() } }"),
       "F7 registered through the same hotkey mechanism as F8")
 check(body(slotSrc, from: "func beginCapture()").contains("FreedCapture.shared.resetDuplicateGuard()"), "Heidi capture resets the Freed duplicate guard")
@@ -324,6 +324,35 @@ check(src("ContentView.swift").contains("Label(\"AI Note\", systemImage: \"list.
 check(src("SettingsView.swift").contains("Label(\"AI Note\", systemImage: \"doc.on.clipboard\")"), "Settings tab says AI Note")
 check(src("Hotkeys.swift").contains("return \"Heidi capture\"") && src("Hotkeys.swift").contains("return \"Freed capture\""),
       "hotkey labels keep the scribe names")
+
+// ── API-key security (2026-10-10) ─────────────────────────────────────────────────────────
+do {
+    let mem = MemorySecretStore()
+    check(ClaudeKey.current(in: mem) == nil, "no key -> nil (no built-in fallback)")
+    let suiteK = "mna-tests-key-\(UUID().uuidString)"
+    let dk = UserDefaults(suiteName: suiteK)!
+    dk.set("test-key-not-real-1", forKey: "claudeAPIKey")
+    dk.set("test-key-not-real-2", forKey: "AnthropicAPIKey")
+    check(ClaudeKey.migrate(defaults: dk, store: mem) && ClaudeKey.current(in: mem) == "test-key-not-real-1",
+          "plain UserDefaults key moves into the Keychain store")
+    check(dk.object(forKey: "claudeAPIKey") == nil && dk.object(forKey: "AnthropicAPIKey") == nil, "plain copies deleted after migration")
+    let failing = MemorySecretStore(); failing.failSaves = true
+    dk.set("test-key-not-real-3", forKey: "claudeAPIKey")
+    _ = ClaudeKey.migrate(defaults: dk, store: failing)
+    check(dk.string(forKey: "claudeAPIKey") == "test-key-not-real-3", "Keychain write fails -> plain key kept (not lost), retried next launch")
+    check(ClaudeKey.set("", in: mem) && ClaudeKey.current(in: mem) == nil, "removing the key leaves no key")
+    UserDefaults().removePersistentDomain(forName: suiteK)
+}
+check(!ActionItemsPolicy.enabled(source: .heidi, heidiSetting: false) && ActionItemsPolicy.enabled(source: .heidi, heidiSetting: true)
+      && !ActionItemsPolicy.enabled(source: .freed, heidiSetting: true), "action items: Heidi follows the setting (default off), Freed never")
+let clientSrc = src("ClaudeAPIClient.swift")
+check(!clientSrc.contains("sk-ant-") && clientSrc.contains("guard let key = ClaudeKey.current() else { throw ClaudeAPIError.missingAPIKey }"),
+      "Claude client: no hardcoded key; no key -> missingAPIKey (Attestor Select shows it)")
+let smSrc = src("SettingsManager.swift")
+check(smSrc.contains("ClaudeKey.migrate(defaults: .standard)") && !smSrc.contains("forKey: claudeAPIKeyKey)"),
+      "settings migrate the key at launch and never write it to UserDefaults")
+check(body(appSrc, from: "func performCapture()").contains("ActionItemsPolicy.enabled(source: .heidi, heidiSetting: SettingsManager.shared.heidiActionItems)"),
+      "Heidi action items gated by the setting")
 
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

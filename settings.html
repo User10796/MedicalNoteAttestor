@@ -274,8 +274,10 @@
                 <label for="api-key">Claude API Key</label>
                 <input type="password" id="api-key" placeholder="sk-ant-...">
                 <div id="api-key-status" class="api-key-status not-set">No API key set</div>
+                <button class="btn btn-secondary" id="api-key-remove" type="button" style="margin-top:6px">Remove key</button>
                 <div class="help-text">
-                    Get your key from console.anthropic.com/settings/keys. Your key is stored locally and never uploaded.
+                    Get your key from console.anthropic.com/settings/keys. It's stored encrypted (Windows DPAPI) and never shown again.
+                    There is no built-in key: without your key, Claude features (Attestor Select, action items) are unavailable.
                 </div>
             </div>
         </div>
@@ -382,6 +384,11 @@
         const hotkeyWarning = document.getElementById('hotkey-warning');
         const apiKeyInput = document.getElementById('api-key');
         const apiKeyStatus = document.getElementById('api-key-status');
+        let clearKeyRequested = false;
+        document.getElementById('api-key-remove').addEventListener('click', () => {
+            clearKeyRequested = true; apiKeyInput.value = '';
+            apiKeyStatus.textContent = 'Key will be removed when you Save'; apiKeyStatus.className = 'api-key-status not-set';
+        });
         const claudeInstructions = document.getElementById('claude-instructions');
         const attestationTemplate = document.getElementById('attestation-template');
         const saveBtn = document.getElementById('save-btn');
@@ -416,7 +423,7 @@ Plan:
             document.getElementById('exam-dot-phrase').value = settings.examDotPhrase  || '';
 
             // Show API key status (don't populate the field for security)
-            if (settings.claudeApiKey) {
+            if (settings.hasClaudeApiKey) {
                 apiKeyStatus.textContent = 'API key is set';
                 apiKeyStatus.className = 'api-key-status set';
                 apiKeyInput.placeholder = 'Key saved - enter new key to replace';
@@ -446,9 +453,9 @@ Plan:
         saveBtn.addEventListener('click', async () => {
             const currentSettings = await window.electronAPI.getSettings();
 
-            // Only update API key if user entered a new one
+            // The key is write-only: send a new key only if one was typed (it's encrypted in main).
             const newApiKey = apiKeyInput.value.trim();
-            const claudeApiKey = newApiKey ? newApiKey : currentSettings.claudeApiKey;
+            apiKeyInput.value = '';
 
             if (hotkeysDirty && !(await applyHotkeys())) return; // keep the window open on invalid hotkeys
             await window.electronAPI.saveSettings({
@@ -456,7 +463,8 @@ Plan:
                 hpiHotkey: hpiHotkey.value,
                 apHotkey: apHotkey.value,
                 examDotPhrase:  document.getElementById('exam-dot-phrase').value,
-                claudeApiKey: claudeApiKey,
+                claudeApiKey: newApiKey || undefined,
+                clearClaudeApiKey: clearKeyRequested,
                 customClaudeInstructions: claudeInstructions.value,
                 customAttestationTemplate: attestationTemplate.value === DEFAULT_TEMPLATE ? '' : attestationTemplate.value
             });

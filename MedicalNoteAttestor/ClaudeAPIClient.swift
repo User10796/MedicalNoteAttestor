@@ -10,7 +10,7 @@ enum ClaudeAPIError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            return "API key not configured. Please set your Anthropic API key."
+            return "No Claude API key. Add your key in Settings \u{2192} Claude API to use this feature."
         case .invalidResponse:
             return "Invalid response from Claude API"
         case .apiError(let message):
@@ -26,9 +26,6 @@ class ClaudeAPIClient {
     static let model = "claude-sonnet-4-6"
     private let claudeModel = ClaudeAPIClient.model
     private let maxTokens = 4096
-
-    // UserDefaults key for storing API key
-    private let apiKeyDefaultsKey = "AnthropicAPIKey"
 
     private let baseSystemPrompt = """
     You are a medical note reformatter. Transform the input according to these rules:
@@ -223,10 +220,10 @@ FORMAT:
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The key the user entered (Keychain). No built-in key, no fallback.
     @MainActor
     private func getAPIKey() async throws -> String {
-        let userKey = SettingsManager.shared.claudeAPIKey.trimmingCharacters(in: .whitespaces)
-        if !userKey.isEmpty { return userKey }
-        return "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"
+        guard let key = ClaudeKey.current() else { throw ClaudeAPIError.missingAPIKey }
+        return key
     }
 }
