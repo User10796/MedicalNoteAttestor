@@ -7,7 +7,7 @@ import Carbon
 // unchanged and come from lib/mna-core.js.
 
 enum HotkeyAction: String, CaseIterable, Identifiable {
-    case capture, pasteHpi, pasteExam, pasteAp
+    case capture, pasteHpi, pasteExam, pasteAp, captureFreed
     var id: String { rawValue }
 
     var defaultsKey: String {
@@ -16,6 +16,7 @@ enum HotkeyAction: String, CaseIterable, Identifiable {
         case .pasteHpi:  return "pasteHotkey1"
         case .pasteExam: return "pasteHotkey2"
         case .pasteAp:   return "pasteHotkey3"
+        case .captureFreed: return "freedCaptureHotkey"
         }
     }
     var label: String {
@@ -24,6 +25,7 @@ enum HotkeyAction: String, CaseIterable, Identifiable {
         case .pasteHpi:  return "Paste HPI"
         case .pasteExam: return "Paste Exam"
         case .pasteAp:   return "Paste A&P"
+        case .captureFreed: return "Freed capture"
         }
     }
     var defaultBinding: String {
@@ -32,6 +34,7 @@ enum HotkeyAction: String, CaseIterable, Identifiable {
         case .pasteHpi: return "F9"
         case .pasteExam: return "F10"
         case .pasteAp: return "F11"
+        case .captureFreed: return "F7"
         }
     }
 }
@@ -158,17 +161,28 @@ final class HotkeyManager {
     static func id(for action: HotkeyAction) -> UInt32 { UInt32(HotkeyAction.allCases.firstIndex(of: action)! + 1) }
 
     /// Current bindings from UserDefaults; invalid, duplicate or missing values fall back to defaults.
+    /// Actions the shared core validates on macOS (F8-F11). Freed capture is checked here: the
+    /// shared core treats it as Windows-only, and changing that would touch the Windows app.
+    static let coreActions: [HotkeyAction] = [.capture, .pasteHpi, .pasteExam, .pasteAp]
+
+    /// Current bindings from UserDefaults; invalid, duplicate or missing values fall back to defaults.
+    /// Freed capture: the saved binding if valid and free, else F7 if free, else unbound (an older
+    /// setting already uses F7; nothing is taken away from another action).
     func bindings() -> [HotkeyAction: String] {
         var raw: [String: String] = [:]
-        for a in HotkeyAction.allCases {
+        for a in HotkeyManager.coreActions {
             if let v = defaults.string(forKey: a.defaultsKey), let b = HotkeyBinding.parse(v) { raw[a.rawValue] = b.canonical }
         }
         var out: [HotkeyAction: String] = [:]
         if let v = validate(raw), v.ok {
-            for a in HotkeyAction.allCases { out[a] = v.bindings[a.rawValue] ?? a.defaultBinding }
+            for a in HotkeyManager.coreActions { out[a] = v.bindings[a.rawValue] ?? a.defaultBinding }
         } else {
-            for a in HotkeyAction.allCases { out[a] = a.defaultBinding }   // corrupt/duplicate -> defaults
+            for a in HotkeyManager.coreActions { out[a] = a.defaultBinding }   // corrupt/duplicate -> defaults
         }
+        let used = Set(out.values)
+        let stored = defaults.string(forKey: HotkeyAction.captureFreed.defaultsKey).flatMap(HotkeyBinding.parse)?.canonical
+        if let f = stored, !used.contains(f) { out[.captureFreed] = f }
+        else if !used.contains(HotkeyAction.captureFreed.defaultBinding) { out[.captureFreed] = HotkeyAction.captureFreed.defaultBinding }
         return out
     }
 
@@ -205,9 +219,28 @@ final class HotkeyManager {
 
     func save(_ bindings: [HotkeyAction: String]) -> HotkeyValidation? {
         var raw: [String: String] = [:]
-        for (a, s) in bindings { raw[a.rawValue] = s }
-        guard let v = validate(raw) else { return nil }
-        if v.ok { for a in HotkeyAction.allCases { defaults.set(v.bindings[a.rawValue], forKey: a.defaultsKey) } }
+        for a in HotkeyManager.coreActions { if let s = bindings[a] { raw[a.rawValue] = s } }
+        guard var v = validate(raw) else { return nil }
+        // Freed capture: valid, and not one of the other four keys.
+        let freed = bindings[.captureFreed] ?? self.bindings()[.captureFreed]
+        var freedCanonical: String?
+        if let f = freed {
+            if let b = HotkeyBinding.parse(f) {
+                freedCanonical = b.canonical
+                if let clash = HotkeyManager.coreActions.first(where: { v.bindings[$0.rawValue] == b.canonical }) {
+                    v.errors.append(.init(action: HotkeyAction.captureFreed.rawValue,
+                                          message: "Freed capture: \(b.canonical) is already used by \(clash.label)"))
+                }
+            } else {
+                v.errors.append(.init(action: HotkeyAction.captureFreed.rawValue,
+                                      message: "Freed capture: \"\(f)\" is not a valid key combination"))
+            }
+        }
+        v.ok = v.errors.isEmpty
+        if v.ok {
+            for a in HotkeyManager.coreActions { defaults.set(v.bindings[a.rawValue], forKey: a.defaultsKey) }
+            if let f = freedCanonical { defaults.set(f, forKey: HotkeyAction.captureFreed.defaultsKey); v.bindings[HotkeyAction.captureFreed.rawValue] = f }
+        }
         return v
     }
 }

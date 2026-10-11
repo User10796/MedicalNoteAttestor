@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		1B33B5152B259FD9EC9EB100 /* Hotkeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BF60C345D22C7CD01EA2FFF /* Hotkeys.swift */; };
 		2573FD71FA3B83821DDDB21C /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F66F05A2A96EE295D9072DB /* LibraryStore.swift */; };
+		37B72A139D78FF1591113C45 /* FreedParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95C4FDED228FF1AE1F3FAF88 /* FreedParser.swift */; };
 		41F2CECEEF3A1C03BC118D28 /* FailureHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = E154E05D85CD862EE4A049A7 /* FailureHUD.swift */; };
 		A1000001233456780000001A /* MedicalNoteAttestorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233456780000000A /* MedicalNoteAttestorApp.swift */; };
 		A1000001233456780000001B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233456780000000B /* ContentView.swift */; };
@@ -25,6 +26,8 @@
 		A10000012334567800000026 /* HeidiTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000012334567800000018 /* HeidiTabView.swift */; };
 		A10000012334567800000027 /* AttestorTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000012334567800000019 /* AttestorTabView.swift */; };
 		B29A834154522DAA9999FCF0 /* MNACore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A85BE79E7BCCC8FC191605D /* MNACore.swift */; };
+		BF4B71ADE5CC33E588FB9629 /* FreedCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 960F2EDF1876C6913414F49F /* FreedCapture.swift */; };
+		D65DA53464B87044AE73F67E /* SourceProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21B0712CCFD9B4356088FE5B /* SourceProfile.swift */; };
 		D9DCEC702EC4EF860D5646E0 /* mna-core.js in Resources */ = {isa = PBXBuildFile; fileRef = 9C924A997C4DA6CB1C0E55BF /* mna-core.js */; };
 		E029ED358996F37BA4361ECD /* PayerPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0594EED91AAB9D077CF0B8C3 /* PayerPicker.swift */; };
 		F7E03919F51F49CBB4C6FDB9 /* CaptureGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 835816D4AF32468A26188287 /* CaptureGate.swift */; };
@@ -32,10 +35,13 @@
 
 /* Begin PBXFileReference section */
 		0594EED91AAB9D077CF0B8C3 /* PayerPicker.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PayerPicker.swift; sourceTree = "<group>"; };
+		21B0712CCFD9B4356088FE5B /* SourceProfile.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SourceProfile.swift; sourceTree = "<group>"; };
 		7F66F05A2A96EE295D9072DB /* LibraryStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		835816D4AF32468A26188287 /* CaptureGate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CaptureGate.swift; sourceTree = "<group>"; };
 		8A85BE79E7BCCC8FC191605D /* MNACore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MNACore.swift; sourceTree = "<group>"; };
 		8BF60C345D22C7CD01EA2FFF /* Hotkeys.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Hotkeys.swift; sourceTree = "<group>"; };
+		95C4FDED228FF1AE1F3FAF88 /* FreedParser.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FreedParser.swift; sourceTree = "<group>"; };
+		960F2EDF1876C6913414F49F /* FreedCapture.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FreedCapture.swift; sourceTree = "<group>"; };
 		9C924A997C4DA6CB1C0E55BF /* mna-core.js */ = {isa = PBXFileReference; includeInIndex = 1; name = "mna-core.js"; path = "lib/mna-core.js"; sourceTree = SOURCE_ROOT; };
 		A10000012334567800000001 /* MedicalNoteAttestor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MedicalNoteAttestor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1000001233456780000000A /* MedicalNoteAttestorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicalNoteAttestorApp.swift; sourceTree = "<group>"; };
@@ -102,6 +108,9 @@
 				0594EED91AAB9D077CF0B8C3 /* PayerPicker.swift */,
 				835816D4AF32468A26188287 /* CaptureGate.swift */,
 				E154E05D85CD862EE4A049A7 /* FailureHUD.swift */,
+				21B0712CCFD9B4356088FE5B /* SourceProfile.swift */,
+				95C4FDED228FF1AE1F3FAF88 /* FreedParser.swift */,
+				960F2EDF1876C6913414F49F /* FreedCapture.swift */,
 			);
 			path = MedicalNoteAttestor;
 			sourceTree = "<group>";
@@ -125,6 +134,7 @@
 				A10000012334567800000002 /* Frameworks */,
 				A10000012334567800000008 /* Resources */,
 				387839169DF359D8EFD6209B /* Embed criteria library snapshot */,
+				32C319990FC6B1B0D0EF3E50 /* Stamp build info */,
 			);
 			buildRules = (
 			);
@@ -181,6 +191,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		32C319990FC6B1B0D0EF3E50 /* Stamp build info */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Stamp build info";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/build-stamp.done",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Build stamp for Settings > About (commit + -dirty, UTC build time), written into the built\n# Info.plist before signing. Fails the build if the stamp would be missing. See scripts/stamp-macos-build.sh.\n\"${SRCROOT}/scripts/stamp-macos-build.sh\" \"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\" \"${SRCROOT}\"\ntouch \"${DERIVED_FILE_DIR}/build-stamp.done\"\n";
+		};
 		387839169DF359D8EFD6209B /* Embed criteria library snapshot */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -226,6 +257,9 @@
 				E029ED358996F37BA4361ECD /* PayerPicker.swift in Sources */,
 				F7E03919F51F49CBB4C6FDB9 /* CaptureGate.swift in Sources */,
 				41F2CECEEF3A1C03BC118D28 /* FailureHUD.swift in Sources */,
+				D65DA53464B87044AE73F67E /* SourceProfile.swift in Sources */,
+				37B72A139D78FF1591113C45 /* FreedParser.swift in Sources */,
+				BF4B71ADE5CC33E588FB9629 /* FreedCapture.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

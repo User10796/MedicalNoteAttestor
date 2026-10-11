@@ -6,7 +6,9 @@ import AppKit
 enum FailureHUD {
     private static var panel: NSPanel?
 
-    static func show(_ text: String, seconds: Double = 4) {
+    enum Style { case error, info }
+
+    static func show(_ text: String, seconds: Double = 4, style: Style = .error) {
         panel?.close()
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 13, weight: .semibold)
@@ -23,7 +25,7 @@ enum FailureHUD {
         p.hasShadow = true
         let bg = NSView(frame: NSRect(origin: .zero, size: size))
         bg.wantsLayer = true
-        bg.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.92).cgColor
+        bg.layer?.backgroundColor = (style == .error ? NSColor.systemRed : NSColor.darkGray).withAlphaComponent(0.92).cgColor
         bg.layer?.cornerRadius = 6
         label.frame.origin = NSPoint(x: 12, y: 7)
         bg.addSubview(label)

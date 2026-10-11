@@ -16,6 +16,7 @@ class SettingsManager: ObservableObject {
     @Published private(set) var pasteHotkey1: String = "F9"
     @Published private(set) var pasteHotkey2: String = "F10"
     @Published private(set) var pasteHotkey3: String = "F11"
+    @Published private(set) var freedCaptureHotkey: String = "F7"
     private var defaultsObserver: NSObjectProtocol?
 
     func refreshHotkeyLabels() {
@@ -24,6 +25,8 @@ class SettingsManager: ObservableObject {
         if pasteHotkey1 != b[.pasteHpi] { pasteHotkey1 = b[.pasteHpi] ?? "F9" }
         if pasteHotkey2 != b[.pasteExam] { pasteHotkey2 = b[.pasteExam] ?? "F10" }
         if pasteHotkey3 != b[.pasteAp] { pasteHotkey3 = b[.pasteAp] ?? "F11" }
+        let freed = b[.captureFreed] ?? "not set"
+        if freedCaptureHotkey != freed { freedCaptureHotkey = freed }
     }
 
     @Published var captureDelay: Double {
