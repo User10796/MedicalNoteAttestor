@@ -7,7 +7,7 @@ import Carbon
 // unchanged and come from lib/mna-core.js.
 
 enum HotkeyAction: String, CaseIterable, Identifiable {
-    case capture, pasteHpi, pasteExam, pasteAp, captureFreed
+    case capture, pasteHpi, pasteExam, pasteAp, captureFreed, openPicker
     var id: String { rawValue }
 
     var defaultsKey: String {
@@ -17,6 +17,7 @@ enum HotkeyAction: String, CaseIterable, Identifiable {
         case .pasteExam: return "pasteHotkey2"
         case .pasteAp:   return "pasteHotkey3"
         case .captureFreed: return "freedCaptureHotkey"
+        case .openPicker: return "openPickerHotkey"
         }
     }
     var label: String {
@@ -26,6 +27,7 @@ enum HotkeyAction: String, CaseIterable, Identifiable {
         case .pasteExam: return "Paste Exam"
         case .pasteAp:   return "Paste A&P"
         case .captureFreed: return "Freed capture"
+        case .openPicker: return "Open payer picker"
         }
     }
     var defaultBinding: String {
@@ -35,6 +37,7 @@ enum HotkeyAction: String, CaseIterable, Identifiable {
         case .pasteExam: return "F10"
         case .pasteAp: return "F11"
         case .captureFreed: return "F7"
+        case .openPicker: return ""     // optional: unbound by default
         }
     }
 }
@@ -183,8 +186,14 @@ final class HotkeyManager {
         let stored = defaults.string(forKey: HotkeyAction.captureFreed.defaultsKey).flatMap(HotkeyBinding.parse)?.canonical
         if let f = stored, !used.contains(f) { out[.captureFreed] = f }
         else if !used.contains(HotkeyAction.captureFreed.defaultBinding) { out[.captureFreed] = HotkeyAction.captureFreed.defaultBinding }
+        // Optional "Open payer picker": bound only if saved, valid, and not taken.
+        if let o = defaults.string(forKey: HotkeyAction.openPicker.defaultsKey).flatMap(HotkeyBinding.parse)?.canonical,
+           !Set(out.values).contains(o) { out[.openPicker] = o }
         return out
     }
+
+    /// Keys web browsers use; warned (not rejected) for the optional picker hotkey.
+    static let browserKeys: Set<String> = ["F1", "F3", "F5", "F6", "F7", "F11", "F12"]
 
     func start(handlers: [HotkeyAction: () -> Void]) {
         self.handlers = handlers
@@ -236,10 +245,31 @@ final class HotkeyManager {
                                       message: "Freed capture: \"\(f)\" is not a valid key combination"))
             }
         }
+        // Optional "Open payer picker": "" or missing = unbound; otherwise valid and unique.
+        var pickerCanonical: String?
+        if let o = bindings[.openPicker], !o.isEmpty {
+            if let b = HotkeyBinding.parse(o) {
+                pickerCanonical = b.canonical
+                let taken = HotkeyManager.coreActions.first(where: { v.bindings[$0.rawValue] == b.canonical })
+                    ?? (freedCanonical == b.canonical ? HotkeyAction.captureFreed : nil)
+                if let clash = taken {
+                    v.errors.append(.init(action: HotkeyAction.openPicker.rawValue,
+                                          message: "Open payer picker: \(b.canonical) is already used by \(clash.label)"))
+                } else if HotkeyManager.browserKeys.contains(b.canonical) {
+                    v.warnings.append(.init(action: HotkeyAction.openPicker.rawValue,
+                                            message: "Open payer picker: \(b.canonical) is used by web browsers; pick a key with a modifier"))
+                }
+            } else {
+                v.errors.append(.init(action: HotkeyAction.openPicker.rawValue,
+                                      message: "Open payer picker: \"\(o)\" is not a valid key combination"))
+            }
+        }
         v.ok = v.errors.isEmpty
         if v.ok {
             for a in HotkeyManager.coreActions { defaults.set(v.bindings[a.rawValue], forKey: a.defaultsKey) }
             if let f = freedCanonical { defaults.set(f, forKey: HotkeyAction.captureFreed.defaultsKey); v.bindings[HotkeyAction.captureFreed.rawValue] = f }
+            if let o = pickerCanonical { defaults.set(o, forKey: HotkeyAction.openPicker.defaultsKey); v.bindings[HotkeyAction.openPicker.rawValue] = o }
+            else if bindings.keys.contains(.openPicker) { defaults.removeObject(forKey: HotkeyAction.openPicker.defaultsKey) }
         }
         return v
     }

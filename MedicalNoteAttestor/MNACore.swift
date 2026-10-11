@@ -88,6 +88,8 @@ final class MNACore {
               info: function () { return __bundle ? { built_at: __bundle.built_at, release_tag: __bundle.release_tag || null,
                                                       commit: __bundle.commit || null } : null; },
               detect: function (ap) { return MNACore.detectProcedures(ap, __bundle); },
+              freedPlanned: function (ap) { return MNACore.freedProcedurePlanned(ap, __bundle); },
+              linePlanned: function (line) { return MNACore.procedureLineIsPlanned(line, __bundle); },
               resolve: function (payer, items) { return MNACore.resolveSelections(__bundle, payer, items); },
               search: function (q, recents) { return MNACore.searchPayers(__bundle, q, recents); },
               procedures: function () { return ((__bundle && __bundle.registries && __bundle.registries.procedures) || [])
@@ -132,6 +134,10 @@ final class MNACore {
     func bundleInfo() -> BundleInfo? { call("__S.info", [], as: BundleInfo?.self) ?? nil }
 
     // MARK: detection / resolution / composition
+
+    /// Freed: does the A&P show a planned procedure? (rule-based, local; same rule as Windows)
+    func freedProcedurePlanned(ap: String) -> Bool { call("__S.freedPlanned", [ap], as: Bool.self) ?? false }
+    func procedureLineIsPlanned(_ line: String) -> Bool { call("__S.linePlanned", [line], as: Bool.self) ?? false }
 
     func detect(ap: String) -> Detection { call("__S.detect", [ap], as: Detection.self) ?? Detection(items: [], noneDetected: true) }
     func resolve(payerId: String, rows: [DetectedRow]) -> [Resolution] {

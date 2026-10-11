@@ -44,9 +44,15 @@ struct HeidiTabView: View {
             .buttonStyle(.borderedProminent)
             .disabled(slotManager.isCapturing)
 
-            Button("Clear") { slotManager.clearNoteSlots() }
-                .buttonStyle(.bordered)
-                .frame(maxWidth: .infinity)
+            HStack {
+                Button("Clear") { slotManager.clearNoteSlots() }
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                Button("Open payer picker") { Task { await AppDelegate.shared?.openPickerManually() } }
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                    .help("Open the payer and procedure picker for the current Freed capture")
+            }
 
             if slotManager.captureFailed {
                 Text("\u{26A0}\u{FE0F} " + CaptureGate.failureMessage)

@@ -71,7 +71,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .pasteHpi:  { Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 1) } },
             .pasteExam: { Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 2) } },
             .pasteAp:   { Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 3) } },
-            .captureFreed: { Task { @MainActor in await AppDelegate.shared?.performFreedCapture() } }
+            .captureFreed: { Task { @MainActor in await AppDelegate.shared?.performFreedCapture() } },
+            .openPicker: { Task { @MainActor in await AppDelegate.shared?.openPickerManually() } }
         ])
 
         // Criteria library: local cache/snapshot now, live refresh at launch and every 6 h.
@@ -183,8 +184,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case .ok(let slots):
             let captureId = slotManager.adoptFreed(slots)
             if SourceProfile.freed.actionItems { Task { await slotManager.appendActionItems() } }
-            await runLibraryFlow(captureId: captureId)
+            // Open the picker only for a planned procedure (rule-based, local; same rule as Windows).
+            // Otherwise no picker, no notice, no sound; "Open payer picker" opens it manually.
+            if let ap = slotManager.apSlot, MNACore.shared.freedProcedurePlanned(ap: ap) {
+                await runLibraryFlow(captureId: captureId)
+            }
         }
+    }
+
+    /// Manual "Open payer picker" (button or optional hotkey): opens the picker for the current
+    /// Freed capture exactly like the automatic open (same flow, same capture id).
+    @MainActor
+    func openPickerManually() async {
+        let slotManager = HeidiSlotManager.shared
+        guard slotManager.activeSource == .freed, !slotManager.captureFailed,
+              let captureId = slotManager.captureId, slotManager.apSlot != nil else {
+            FailureHUD.show("Capture a Freed note first (F7), then open the payer picker.", style: .info)
+            return
+        }
+        await runLibraryFlow(captureId: captureId)
     }
 
     // Capture -> payer picker -> detection -> library selections (source-agnostic: takes the

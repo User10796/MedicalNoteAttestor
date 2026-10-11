@@ -179,10 +179,13 @@ struct HotkeySettingsSection: View {
                 HStack {
                     Text(action.label)
                     Spacer()
-                    Button(recording == action ? "Press keys…" : (draft[action] ?? action.defaultBinding)) {
+                    Button(recording == action ? "Press keys…" : label(for: action)) {
                         recording == action ? stopRecording() : startRecording(action)
                     }
                     .frame(minWidth: 140)
+                    if action == .openPicker, !(draft[.openPicker] ?? "").isEmpty {
+                        Button("Clear") { draft[.openPicker] = ""; apply() }   // optional: unbound is the default
+                    }
                 }
             }
             ForEach(errors, id: \.self) { Text("\u{26A0}\u{FE0F} " + $0).font(.caption).foregroundColor(.red) }
@@ -199,6 +202,11 @@ struct HotkeySettingsSection: View {
         }
         .onAppear { draft = AppDelegate.shared?.hotkeys.bindings() ?? [:] }
         .onDisappear { stopRecording() }
+    }
+
+    private func label(for action: HotkeyAction) -> String {
+        let v = draft[action] ?? action.defaultBinding
+        return v.isEmpty ? "Not set" : v
     }
 
     private func startRecording(_ action: HotkeyAction) {

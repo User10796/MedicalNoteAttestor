@@ -359,7 +359,7 @@
     <script src="lib/mna-core.js"></script>
     <script>
         const C = window.MNACore;
-        const labelFor = (id) => (C.HOTKEY_ACTIONS.find(a => a.id === id) || { label: id }).label;
+        const labelFor = (id) => (C.HOTKEY_ACTIONS.concat(C.optionalHotkeyActions('win32')).find(a => a.id === id) || { label: id }).label;
 
         // Tab switching
         const tabs = document.querySelectorAll('.tab');
@@ -507,10 +507,11 @@ Plan:
             actions.forEach(a => {
                 const g = document.createElement('div'); g.className = 'form-group';
                 const l = document.createElement('label'); l.textContent = a.label;
-                const inp = document.createElement('input'); inp.type = 'text'; inp.readOnly = true; inp.value = hotkeyState[a.id];
+                const shown = () => hotkeyState[a.id] || (a.optional ? 'Not set' : '');
+                const inp = document.createElement('input'); inp.type = 'text'; inp.readOnly = true; inp.value = shown();
                 inp.style.cssText = 'width:100%;padding:8px;border:1px solid #e1e4e8;border-radius:4px;font-size:13px;cursor:pointer';
                 inp.addEventListener('focus', () => { inp.value = 'Press keys\u2026'; });
-                inp.addEventListener('blur', () => { inp.value = hotkeyState[a.id]; });
+                inp.addEventListener('blur', () => { inp.value = shown(); });
                 inp.addEventListener('keydown', (e) => {
                     e.preventDefault(); e.stopPropagation();
                     if (e.key === 'Escape' || e.key === 'Tab') { inp.blur(); return; }
@@ -519,7 +520,14 @@ Plan:
                     hotkeyState[a.id] = combo; hotkeysDirty = true;
                     inp.value = combo; inp.blur(); renderHotkeyMsgs();
                 });
-                g.append(l, inp); box.append(g);
+                g.append(l, inp);
+                if (a.optional) {   // optional hotkeys can be cleared (unbound is the default)
+                    const clr = document.createElement('button'); clr.type = 'button'; clr.className = 'btn btn-secondary';
+                    clr.textContent = 'Clear'; clr.style.marginTop = '4px';
+                    clr.addEventListener('click', () => { hotkeyState[a.id] = ''; hotkeysDirty = true; inp.value = shown(); renderHotkeyMsgs(); });
+                    g.append(clr);
+                }
+                box.append(g);
             });
             renderHotkeyMsgs();
         }
