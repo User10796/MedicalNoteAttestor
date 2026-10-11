@@ -9,7 +9,7 @@ struct SettingsView: View {
             // Heidi Copy Tab
             heidiCopyTab
                 .tabItem {
-                    Label("Heidi Copy", systemImage: "doc.on.clipboard")
+                    Label("AI Note", systemImage: "doc.on.clipboard")
                 }
 
             // Claude API Tab
