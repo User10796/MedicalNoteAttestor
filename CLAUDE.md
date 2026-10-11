@@ -14,6 +14,10 @@
   F9 HPI, F10 Exam, F11 A&P) without Sterling's explicit OK.
 - No PHI leaves the machine except the pre-existing, user-initiated Claude API calls. Never log note text.
 - Tokens/keys: never print, log, commit, or build them into binaries.
+  Claude API key: no built-in key or fallback. Stored only in the macOS Keychain (`SecretStore.swift`,
+  `ClaudeKey`) or Electron safeStorage (`lib/secrets.js`); plain-text values from older builds are migrated
+  and deleted at launch. `test/secrets.test.js` fails if an `sk-ant-` key appears anywhere in the repo.
+  Heidi action items (Mac) are off by default; Settings > AI Note turns them on.
 - Windows `.exe` goes to Google Drive; never overwrite the canonical file without confirmation.
 - Criteria library integration: shared core `lib/mna-core.js` (detection, composition, payer search, hotkey
   validation) runs in Electron and, via JavaScriptCore, in the Swift app (`MNACore.swift`). Change it once,

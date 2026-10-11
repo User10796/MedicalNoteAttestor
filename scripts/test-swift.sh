@@ -4,6 +4,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT="$(mktemp -d)/mna-swift-tests"
 xcrun swiftc -o "$OUT" MedicalNoteAttestor/MNACore.swift MedicalNoteAttestor/Hotkeys.swift MedicalNoteAttestor/CaptureGate.swift MedicalNoteAttestor/SourceProfile.swift \
-  MedicalNoteAttestor/FreedParser.swift MedicalNoteAttestor/FreedCapture.swift tests/swift/main.swift \
-  -framework JavaScriptCore -framework Carbon -framework CryptoKit
+  MedicalNoteAttestor/FreedParser.swift MedicalNoteAttestor/FreedCapture.swift MedicalNoteAttestor/SecretStore.swift tests/swift/main.swift \
+  -framework JavaScriptCore -framework Carbon -framework CryptoKit -framework Security
 "$OUT" "$PWD"
