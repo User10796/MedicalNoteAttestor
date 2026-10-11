@@ -252,5 +252,69 @@ check(["hpiSlot = ", "apSlot = ", "freedExam = slots.exam", "clearLibrary()", "c
 // Library picker parity: empty Freed exam + library exam -> library text alone (shared core).
 check(core.composeExam(scribeExam: "", libraryTexts: ["Lumbar spine exam."]) == "Lumbar spine exam.", "Freed N/A exam + library exam -> library exam")
 
+// ── Freed: picker only for a planned procedure (SPEC_freed_picker_on_planned_procedure) ────
+// Same shared cases file as the Node tests, through the same rule (lib/mna-core.js via JavaScriptCore).
+let intentCases = json("test/fixtures/freed/procedure_intent_cases.json") as! [[String: Any]]
+var intentOK = 0
+for c in intentCases {
+    let text = c["text"] as! String, want = c["planned"] as! Bool
+    if core.procedureLineIsPlanned(text) == want && core.procedureLineIsPlanned("- " + text) == want { intentOK += 1 }
+    else { print("  intent mismatch: \(text) (want \(want))") }
+}
+check(intentCases.count >= 18 && intentOK == intentCases.count, "all \(intentCases.count) shared intent cases match on macOS")
+func freedAP(_ f: String) -> String { okSlots(FreedCapture().process(raw: freedFixture(f)))?.ap ?? "" }
+check(core.freedProcedurePlanned(ap: freedAP("freed_sample_01.txt")), "sample 01 -> picker opens")
+check(core.freedProcedurePlanned(ap: freedAP("freed_sample_02_no_exam.txt")), "sample 02 -> picker opens")
+check(!core.freedProcedurePlanned(ap: freedAP("freed_sample_03_consider_only.txt")), "sample 03 (consider only) -> picker does not open")
+do {
+    let s3 = okSlots(FreedCapture().process(raw: freedFixture("freed_sample_03_consider_only.txt")))
+    check(s3.map { nf($0.hpi) } == nf(freedFixture("freed_sample_03_consider_only.F9.expected.txt"))
+          && s3.map { nf($0.exam) } == nf(freedFixture("freed_sample_03_consider_only.F10.expected.txt"))
+          && s3.map { nf($0.ap) } == nf(freedFixture("freed_sample_03_consider_only.F11.expected.txt")),
+          "sample 03 parses: F9 / F10 / F11 match the new expected files")
+}
+// Manual fallback: after a capture that didn't auto-open, the picker's library exam text is what F10 pastes.
+do {
+    let s3exam = okSlots(FreedCapture().process(raw: freedFixture("freed_sample_03_consider_only.txt")))?.exam ?? ""
+    let f10 = core.composeExam(scribeExam: s3exam, libraryTexts: ["Lib exam line."])
+    check(f10.hasPrefix(s3exam + "\n\n") && f10.hasSuffix("Lib exam line."), "manual open: F10 = Freed exam + inserted library exam")
+}
+let appSrc2 = src("MedicalNoteAttestorApp.swift")
+let f7b = body(appSrc2, from: "func performFreedCapture()")
+check(f7b.contains("MNACore.shared.freedProcedurePlanned(ap: ap)") && f7b.contains("await runLibraryFlow(captureId: captureId)"),
+      "Freed auto-open gated by the planned-procedure rule")
+let manual = body(appSrc2, from: "func openPickerManually()")
+check(manual.contains("slotManager.activeSource == .freed") && manual.contains("await runLibraryFlow(captureId: captureId)"),
+      "manual open reuses the same library flow for the current Freed capture")
+check(appSrc2.contains(".openPicker: { Task { @MainActor in await AppDelegate.shared?.openPickerManually() } }"), "optional hotkey wired to manual open")
+check(body(appSrc2, from: "func performCapture()").contains("await runLibraryFlow(captureId: captureId)")
+      && !body(appSrc2, from: "func performCapture()").contains("freedProcedurePlanned"), "Heidi auto-open unchanged")
+check(src("HeidiTabView.swift").contains("Button(\"Open payer picker\")"), "main window has an Open payer picker button")
+// Optional hotkey: unbound by default, rebindable, duplicate rejected, browser key warned, clearable.
+do {
+    let suite4 = "mna-tests-picker-\(UUID().uuidString)"
+    let d4 = UserDefaults(suiteName: suite4)!
+    let f4 = FakeRegistrar()
+    let m4 = HotkeyManager(registrar: f4, defaults: d4, validate: { core.validateHotkeys($0) })
+    m4.start(handlers: [:])
+    let pid = HotkeyManager.id(for: .openPicker)
+    check(f4.registered[pid] == nil && m4.bindings()[.openPicker] == nil, "Open picker hotkey unbound by default")
+    var b = m4.bindings(); b[.openPicker] = "Ctrl+Shift+P"
+    check(m4.save(b)?.ok == true, "Open picker hotkey binds")
+    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    check(f4.registered[pid] == "Ctrl+Shift+P", "Open picker hotkey active without restart")
+    var dupB = m4.bindings(); dupB[.openPicker] = "F9"
+    check(m4.save(dupB)?.ok == false, "Open picker hotkey duplicate rejected")
+    var browserB = m4.bindings(); browserB[.openPicker] = "F6"
+    check(m4.save(browserB)?.warnings.contains { $0.message.contains("web browsers") } == true, "browser function key warned")
+    var clearB = m4.bindings(); clearB[.openPicker] = ""
+    _ = m4.save(clearB)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    check(f4.registered[pid] == nil && d4.string(forKey: "openPickerHotkey") == nil, "Open picker hotkey can be cleared")
+    check(f4.registered[HotkeyManager.id(for: .capture)] == "F8" && f4.registered[HotkeyManager.id(for: .captureFreed)] == "F7",
+          "Heidi F8 and Freed F7 unchanged")
+    UserDefaults().removePersistentDomain(forName: suite4)
+}
+
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

@@ -357,7 +357,9 @@ function readFreedClip() {
             captureFailed = false;
             beginCapture(ts);
             sendSlotState();
-            if (slots.ap) startLibraryFlow('freed', ts);
+            // Open the picker only for a planned procedure (rule-based, local). Otherwise no picker,
+            // no notice, no sound; "Open payer picker" (button / optional hotkey) opens it manually.
+            if (slots.ap && core.freedProcedurePlanned(slots.ap, getLibraryClient().bundle())) startLibraryFlow('freed', ts);
         }
         return true;
     } catch (e) {
@@ -365,6 +367,16 @@ function readFreedClip() {
         return false;
     }
 }
+// Manual "Open payer picker" (main-window button or the optional hotkey): opens the picker for the
+// current Freed capture exactly like the automatic open (same flow, same capture timestamp).
+function openPickerManually() {
+    if (currentSource !== 'freed' || !currentCaptureTs || captureFailed || !slots.ap) {
+        return { ok: false, message: 'Capture a Freed note first (F7), then open the payer picker.' };
+    }
+    startLibraryFlow('freed', currentCaptureTs);
+    return { ok: true };
+}
+ipcMain.handle('open-picker-manually', () => openPickerManually());
 // ── end Freed source
 
 // ── Payer / procedure picker ────────────────────────────────────────────────
@@ -419,8 +431,9 @@ ipcMain.on('picker-done', (e, answer) => {
 // Windows: AHK owns the hotkeys and re-reads hotkeys.json (250 ms poll).
 
 const HOTKEY_KEYS = { capture: 'captureHotkey', pasteHpi: 'pasteHotkey1', pasteExam: 'pasteHotkey2', pasteAp: 'pasteHotkey3',
-                      captureFreed: 'freedCaptureHotkey' };
-const hotkeyKeysFor = (platform) => Object.fromEntries(core.hotkeyActionsFor(platform).map(a => [a.id, HOTKEY_KEYS[a.id]]));
+                      captureFreed: 'freedCaptureHotkey', openPicker: 'openPickerHotkey' };
+const hotkeyKeysFor = (platform) => Object.fromEntries(core.hotkeyActionsFor(platform).concat(core.optionalHotkeyActions(platform))
+    .map(a => [a.id, HOTKEY_KEYS[a.id]]));
 
 function currentHotkeys() {
     const raw = {};
@@ -597,6 +610,9 @@ function registerHotkeys() {
             tryRegister(paste2Key,  () => pasteSlot('exam'));
             tryRegister(paste3Key,  () => pasteSlot('ap'));
         }
+        // Optional "Open payer picker" hotkey (unbound by default). AHK doesn't handle it; Electron does.
+        if (hk.openPicker) tryRegister(hk.openPicker, () => { const r = openPickerManually(); if (!r.ok && mainWindow) mainWindow.webContents.send('source-notice', r.message); });
+
         // Legacy single-section hotkeys — keep on all platforms as fallback
         tryRegister(hpiKey, () => extractAndCopySection('hpi'));
         tryRegister(apKey,  () => extractAndCopySection('ap'));
@@ -957,7 +973,9 @@ ipcMain.handle('library-set-options', (e, o) => {
 });
 
 ipcMain.handle('get-hotkeys', () => ({ bindings: currentHotkeys(), defaults: core.defaultHotkeys(process.platform),
-    actions: core.hotkeyActionsFor(process.platform).map(a => ({ id: a.id, label: a.label })), platform: process.platform }));
+    actions: core.hotkeyActionsFor(process.platform).map(a => ({ id: a.id, label: a.label }))
+        .concat(core.optionalHotkeyActions(process.platform).map(a => ({ id: a.id, label: a.label, optional: true }))),
+    platform: process.platform }));
 ipcMain.handle('save-hotkeys', (e, bindings) => {
     const v = core.validateHotkeys(bindings || {}, process.platform);
     if (!v.ok) return v;

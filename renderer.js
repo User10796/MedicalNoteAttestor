@@ -307,6 +307,11 @@ async function manualCopySlot(slotName) {
     await window.electronAPI.pasteSlot(slotName);
 }
 
+async function openPickerManually() {
+    const r = await window.electronAPI.openPickerManually();
+    if (!r.ok) setHeidiStatus('\u2139\uFE0F ' + r.message, '');
+}
+
 async function clearSlots() {
     await window.electronAPI.clearSlots();
     updateSlotCard('hpi', false, null);

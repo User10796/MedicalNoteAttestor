@@ -27,5 +27,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     librarySetOptions:   (o) => ipcRenderer.invoke('library-set-options', o),
     getHotkeys:          () => ipcRenderer.invoke('get-hotkeys'),
     saveHotkeys:         (b) => ipcRenderer.invoke('save-hotkeys', b),
-    onSourceNotice:      (cb) => ipcRenderer.on('source-notice', (e, m) => cb(m))
+    onSourceNotice:      (cb) => ipcRenderer.on('source-notice', (e, m) => cb(m)),
+    openPickerManually:  () => ipcRenderer.invoke('open-picker-manually')
 });
