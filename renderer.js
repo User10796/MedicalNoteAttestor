@@ -259,7 +259,7 @@ function updateSlotCard(slotName, loaded, preview) {
             prev.classList.remove('empty');
         } else {
             prev.textContent = slotName === 'exam'
-                ? 'Configure in Settings \u2192 Heidi Copy' : 'Empty';
+                ? 'Configure in Settings \u2192 AI Note' : 'Empty';
             prev.classList.add('empty');
         }
     }

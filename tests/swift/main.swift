@@ -316,5 +316,14 @@ do {
     UserDefaults().removePersistentDomain(forName: suite4)
 }
 
+// ── UI cleanup (SPEC_ui_cleanup_ai_note) ──────────────────────────────────────────────────
+let appFile = src("MedicalNoteAttestorApp.swift")
+check(appFile.components(separatedBy: "Settings {").count == 2 && !appFile.contains("CommandGroup(") && !appFile.contains("Selector((\"showSettingsWindow:\"))"),
+      "exactly one Settings entry: the Settings scene (app menu > Settings…, Cmd+,)")
+check(src("ContentView.swift").contains("Label(\"AI Note\", systemImage: \"list.clipboard\")"), "main window tab says AI Note")
+check(src("SettingsView.swift").contains("Label(\"AI Note\", systemImage: \"doc.on.clipboard\")"), "Settings tab says AI Note")
+check(src("Hotkeys.swift").contains("return \"Heidi capture\"") && src("Hotkeys.swift").contains("return \"Freed capture\""),
+      "hotkey labels keep the scribe names")
+
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

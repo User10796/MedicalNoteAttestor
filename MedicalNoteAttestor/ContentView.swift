@@ -9,7 +9,7 @@ struct ContentView: View {
                 }
             HeidiTabView()
                 .tabItem {
-                    Label("Heidi", systemImage: "list.clipboard")
+                    Label("AI Note", systemImage: "list.clipboard")
                 }
         }
         .frame(minWidth: 180, idealWidth: 380, minHeight: 300, idealHeight: 540)

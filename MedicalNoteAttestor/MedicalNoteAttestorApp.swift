@@ -16,15 +16,10 @@ struct MedicalNoteAttestorApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .defaultPosition(.topTrailing)
-        .commands {
-            CommandGroup(after: .appSettings) {
-                Button("Settings...") {
-                    appDelegate.openSettings()
-                }
-                .keyboardShortcut(",", modifiers: .command)
-            }
-        }
 
+        // The Settings scene provides the one Settings item: app menu > Settings… (⌘,).
+        // (A second, custom "Settings..." command used to sit next to it; it called
+        // showSettingsWindow:, which macOS 14+ ignores, so it did nothing. Removed.)
         Settings {
             SettingsView()
         }
@@ -95,10 +90,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         hotkeys.suspend()
-    }
-
-    func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     // MARK: - Global Hotkey Registration
