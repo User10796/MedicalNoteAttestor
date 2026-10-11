@@ -20,6 +20,9 @@ jobs:
       - name: Swift tests (shared core via JavaScriptCore, hotkeys)
         run: scripts/test-swift.sh
 
+      - name: Build stamp script tests
+        run: scripts/test-build-stamp.sh
+
       - name: Build app
         run: |
           xcodebuild -project MedicalNoteAttestor.xcodeproj \
@@ -29,6 +32,14 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Verify build stamp (present, non-empty, matches HEAD)
+        run: |
+          PL="build/Build/Products/Release/MedicalNoteAttestor.app/Contents/Info.plist"
+          STAMP="$(/usr/libexec/PlistBuddy -c 'Print :MNABuildCommit' "$PL")"
+          echo "MNABuildCommit=$STAMP MNABuildTime=$(/usr/libexec/PlistBuddy -c 'Print :MNABuildTime' "$PL")"
+          test -n "$STAMP" || { echo "FATAL: build stamp missing"; exit 1; }
+          case "$STAMP" in "$(git rev-parse --short HEAD)"|"$(git rev-parse --short HEAD)-dirty") ;; *) echo "FATAL: stamp $STAMP != HEAD"; exit 1;; esac
 
       - name: Create app bundle
         run: |

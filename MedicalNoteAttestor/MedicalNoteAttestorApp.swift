@@ -70,7 +70,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .capture:   { Task { @MainActor in await AppDelegate.shared?.performCapture() } },
             .pasteHpi:  { Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 1) } },
             .pasteExam: { Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 2) } },
-            .pasteAp:   { Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 3) } }
+            .pasteAp:   { Task { @MainActor in HeidiSlotManager.shared.writeToClipboard(slot: 3) } },
+            .captureFreed: { Task { @MainActor in await AppDelegate.shared?.performFreedCapture() } }
         ])
 
         // Criteria library: local cache/snapshot now, live refresh at launch and every 6 h.
@@ -162,8 +163,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         slotManager.hpiSlot = hpi
         slotManager.apSlot  = ap
 
-        Task { await slotManager.appendActionItems() }
+        if SourceProfile.heidi.actionItems { Task { await slotManager.appendActionItems() } }
         await runLibraryFlow(captureId: captureId)
+    }
+
+    // F7: Freed. Sterling clicks Freed's "Copy all" first; this sends NO keystrokes and only reads
+    // the general pasteboard. Invalid or duplicate notes change nothing and show a short notice
+    // (never pasteboard text). Freed's profile has no action items.
+    @MainActor
+    func performFreedCapture() async {
+        let slotManager = HeidiSlotManager.shared
+        let text = NSPasteboard.general.string(forType: .string) ?? ""
+        switch FreedCapture.shared.process(raw: text) {
+        case .invalid:
+            NSSound(named: .init("Funk"))?.play()
+            FailureHUD.show(FreedCapture.noticeInvalid)
+        case .duplicate:
+            FailureHUD.show(FreedCapture.noticeDuplicate, style: .info)
+        case .ok(let slots):
+            let captureId = slotManager.adoptFreed(slots)
+            if SourceProfile.freed.actionItems { Task { await slotManager.appendActionItems() } }
+            await runLibraryFlow(captureId: captureId)
+        }
     }
 
     // Capture -> payer picker -> detection -> library selections (source-agnostic: takes the

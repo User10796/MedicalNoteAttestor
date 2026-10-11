@@ -322,6 +322,7 @@ struct AboutSettingsTab: View {
                 LabeledContent("Paste HPI", value: settings.pasteHotkey1)
                 LabeledContent("Paste Exam", value: settings.pasteHotkey2)
                 LabeledContent("Paste A&P", value: settings.pasteHotkey3)
+                LabeledContent("Freed capture", value: settings.freedCaptureHotkey)
             }
         }
         .formStyle(.grouped)

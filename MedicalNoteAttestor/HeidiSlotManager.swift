@@ -14,6 +14,11 @@ class HeidiSlotManager: ObservableObject {
     /// Last capture failed: every paste yields nothing until a good capture or Clear.
     @Published private(set) var captureFailed: Bool = false
 
+    /// Which scribe filled the slots. Heidi (F8) uses the exam dot-phrase for F10; Freed (F7)
+    /// uses Freed's own exam, which may be empty (then F10 is a silent no-op).
+    @Published private(set) var activeSource: ScribeSource = .heidi
+    @Published private(set) var freedExam: String = ""
+
     // Criteria-library selections for the current capture only. Composition happens at paste
     // time (MNACore.composeExam / composeAP) so the A&P includes late-arriving action items.
     @Published private(set) var captureId: UUID? = nil
@@ -41,6 +46,9 @@ class HeidiSlotManager: ObservableObject {
         clearLibrary()
         captureId = nil
         captureFailed = false
+        activeSource = .heidi
+        freedExam = ""
+        FreedCapture.shared.resetDuplicateGuard()   // Clear: the same Freed note must re-adopt
         // examSlot intentionally NOT cleared — persists always
     }
 
@@ -48,6 +56,23 @@ class HeidiSlotManager: ObservableObject {
     func beginCapture() -> UUID {
         clearLibrary()
         captureFailed = false
+        activeSource = .heidi
+        freedExam = ""
+        FreedCapture.shared.resetDuplicateGuard()   // a Heidi capture replaced the slots
+        let id = UUID()
+        captureId = id
+        return id
+    }
+
+    /// Successful Freed capture: replace all three slots at once. An empty section empties its
+    /// slot (never the previous patient's text). Returns the new capture id for the library flow.
+    func adoptFreed(_ slots: FreedSlots) -> UUID {
+        clearLibrary()
+        captureFailed = false
+        activeSource = .freed
+        hpiSlot = slots.hpi.isEmpty ? nil : slots.hpi
+        apSlot = slots.ap.isEmpty ? nil : slots.ap
+        freedExam = slots.exam
         let id = UUID()
         captureId = id
         return id
@@ -79,8 +104,9 @@ class HeidiSlotManager: ObservableObject {
     /// Exam paste: scribe exam (+ library exam text, deduped). Empty scribe exam + library -> library alone.
     var composedExam: String? {
         if captureFailed { return nil }
-        if libraryExams.isEmpty { return examSlot.isEmpty ? nil : examSlot }
-        let out = MNACore.shared.composeExam(scribeExam: examSlot, libraryTexts: libraryExams)
+        let scribeExam = activeSource == .freed ? freedExam : examSlot
+        if libraryExams.isEmpty { return scribeExam.isEmpty ? nil : scribeExam }
+        let out = MNACore.shared.composeExam(scribeExam: scribeExam, libraryTexts: libraryExams)
         return out.isEmpty ? nil : out
     }
 
@@ -94,14 +120,20 @@ class HeidiSlotManager: ObservableObject {
     }
 
     func writeToClipboard(slot: Int) {
-        let content = CaptureGate.content(slot: slot, failed: captureFailed, hpi: hpiSlot, exam: composedExam, ap: composedAP)
-        if captureFailed {
+        let decision = CaptureGate.decide(slot: slot, failed: captureFailed, source: activeSource,
+                                          hpi: hpiSlot, exam: composedExam, ap: composedAP)
+        switch decision {
+        case .failedNotice:
             NSSound(named: .init("Funk"))?.play()
             FailureHUD.show(CaptureGate.failureMessage)
             return
+        case .silent:
+            return   // Freed exam empty/N/A and no library text: paste nothing, show nothing
+        case .beep, .paste:
+            break
         }
 
-        if let text = content, !text.isEmpty {
+        if case .paste(let text) = decision {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
             lastPastedSlot = slot

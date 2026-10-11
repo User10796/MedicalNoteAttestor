@@ -27,3 +27,6 @@
   SPEC_freed_source_standalone (2026-10-10). F7 path: AHK writes `freed-clip.txt` -> Electron polls, validates,
   dedupes (SHA-256, in memory) and writes `mna-freed-result.txt` -> AHK adopts all three slots at once. Fixtures
   in `test/fixtures/freed/` are synthetic; never commit real Freed output.
+- macOS Freed (F7): Swift port in `FreedParser.swift` / `FreedCapture.swift`, tested by `scripts/test-swift.sh` against the
+  shared `test/fixtures/freed/` (same expected outputs as Windows). Build stamp: Xcode phase "Stamp build info"
+  (`scripts/stamp-macos-build.sh`, commit + `-dirty`, UTC time, fails if empty); tests: `scripts/test-build-stamp.sh`.

@@ -116,5 +116,141 @@ check(CaptureGate.content(slot: 2, failed: false, hpi: "h", exam: "Gen: NAD", ap
       && CaptureGate.content(slot: 3, failed: false, hpi: "h", exam: "e", ap: "a") == "a", "good capture pastes unchanged")
 check(CaptureGate.failureMessage == "Capture failed \u{2014} nothing to paste", "failure message text")
 
+// ── Freed capture hotkey (F7) ──────────────────────────────────────────────────────────────
+do {
+    let suite2 = "mna-tests-freed-\(UUID().uuidString)"
+    let d2 = UserDefaults(suiteName: suite2)!
+    let f2 = FakeRegistrar()
+    let m2 = HotkeyManager(registrar: f2, defaults: d2, validate: { core.validateHotkeys($0) })
+    m2.start(handlers: [:])
+    func r2(_ a: HotkeyAction) -> String? { f2.registered[HotkeyManager.id(for: a)] }
+    check(r2(.captureFreed) == "F7", "older settings without an F7 entry load; Freed capture defaults to F7")
+    check(r2(.capture) == "F8" && r2(.pasteExam) == "F10", "Heidi keys unchanged alongside F7")
+    let ok = m2.save([.capture: "F8", .pasteHpi: "F9", .pasteExam: "F10", .pasteAp: "F11", .captureFreed: "Ctrl+Shift+F7"])
+    check(ok?.ok == true, "Freed capture rebinding validates")
+    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    check(r2(.captureFreed) == "Ctrl+Shift+F7", "Freed rebinding active without restart")
+    let dup = m2.save([.capture: "F8", .pasteHpi: "F9", .pasteExam: "F10", .pasteAp: "F11", .captureFreed: "F9"])
+    check(dup?.ok == false && dup?.errors.first?.message.contains("already used by Paste HPI") == true
+          && r2(.captureFreed) == "Ctrl+Shift+F7", "Freed capture duplicate rejected, previous kept")
+    UserDefaults().removePersistentDomain(forName: suite2)
+
+    let suite3 = "mna-tests-freed-old-\(UUID().uuidString)"
+    let d3 = UserDefaults(suiteName: suite3)!
+    d3.set("F7", forKey: "pasteHotkey1")   // an older setup that already used F7 for Paste HPI
+    let f3 = FakeRegistrar()
+    let m3 = HotkeyManager(registrar: f3, defaults: d3, validate: { core.validateHotkeys($0) })
+    m3.start(handlers: [:])
+    check(f3.registered[HotkeyManager.id(for: .pasteHpi)] == "F7" && f3.registered[HotkeyManager.id(for: .captureFreed)] == nil,
+          "existing F7 binding kept; Freed capture left unbound until rebound")
+    UserDefaults().removePersistentDomain(forName: suite3)
+}
+
+// ── Freed source on Mac (SPEC_mac_freed_and_build_stamp Part C) ─────────────────────────
+// Reads the SHARED fixtures in test/fixtures/freed/ (same expected outputs as Windows).
+let freedDir = root.appendingPathComponent("test/fixtures/freed")
+func freedFixture(_ f: String) -> String { try! String(contentsOf: freedDir.appendingPathComponent(f), encoding: .utf8) }
+func nf(_ s: String) -> String {   // §6 normalization + EOF trim, as the Node harness does
+    var t = FreedParser.normalize(s)
+    while t.hasSuffix("\n") { t.removeLast() }
+    return t
+}
+func okSlots(_ r: FreedCapture.Result) -> FreedSlots? { if case .ok(let s) = r { return s } else { return nil } }
+
+for (sample, hasExam) in [("freed_sample_01", true), ("freed_sample_02_no_exam", false)] {
+    let s = okSlots(FreedCapture().process(raw: freedFixture(sample + ".txt")))
+    check(s.map { nf($0.hpi) } == nf(freedFixture(sample + ".F9.expected.txt")), "\(sample): F9 matches the shared fixture")
+    check(s.map { nf($0.ap) } == nf(freedFixture(sample + ".F11.expected.txt")), "\(sample): F11 matches the shared fixture")
+    if hasExam { check(s.map { nf($0.exam) } == nf(freedFixture(sample + ".F10.expected.txt")), "\(sample): F10 matches the shared fixture") }
+    else { check(s?.exam == "", "\(sample): F10 slot is empty (N/A exam)") }
+}
+let crlf = "\u{FEFF}" + freedFixture("freed_sample_01.txt").replacingOccurrences(of: "\r\n", with: "\n")
+    .replacingOccurrences(of: "\n", with: "  \r\n")
+check(okSlots(FreedCapture().process(raw: crlf)).map { nf($0.ap) } == nf(freedFixture("freed_sample_01.F11.expected.txt")),
+      "CRLF + BOM + trailing spaces parse identically")
+
+// Stale-slot clearing: 01 then 02 -> F10 empty, all three replaced.
+do {
+    let cap = FreedCapture()
+    let a = okSlots(cap.process(raw: freedFixture("freed_sample_01.txt")))
+    let b = okSlots(cap.process(raw: freedFixture("freed_sample_02_no_exam.txt")))
+    check(a?.exam.contains("Tenderness over bilateral L4-L5") == true && b?.exam == "" && b?.hpi.contains("61-year-old male") == true,
+          "01 then 02: F10 empty, slots replaced (no stale exam)")
+}
+// Duplicate guard.
+do {
+    let cap = FreedCapture()
+    _ = cap.process(raw: freedFixture("freed_sample_01.txt"))
+    let p = cap.parses
+    check(cap.process(raw: freedFixture("freed_sample_01.txt").replacingOccurrences(of: "\n", with: "\r\n")) == .duplicate && cap.parses == p,
+          "same note twice -> duplicate, no re-parse")
+    let c2 = FreedCapture()
+    let seq = ["freed_sample_01.txt", "freed_sample_02_no_exam.txt", "freed_sample_01.txt"].map { okSlots(c2.process(raw: freedFixture($0))) != nil }
+    check(seq == [true, true, true] && c2.parses == 3, "01 -> 02 -> 01 re-parses each time")
+    cap.resetDuplicateGuard()
+    check(okSlots(cap.process(raw: freedFixture("freed_sample_01.txt"))) != nil, "reset (Heidi capture / Clear) lets the same note re-adopt")
+    let c3 = FreedCapture()
+    check(c3.process(raw: "not a note") == .invalid && c3.process(raw: "not a note") == .invalid, "failed captures never become duplicates")
+}
+// Shape validation failures (slots unchanged = no .ok result; nothing adopted).
+let s01 = freedFixture("freed_sample_01.txt").replacingOccurrences(of: "\r\n", with: "\n")
+let heidiNote = "Interval history, HPI:\nPatient returns for follow-up of low back pain.\n\nAssessment and Plan:\nLumbar spondylosis. Proceed with bilateral L4-5, L5-S1 medial branch blocks.\n"
+let invalid: [(String, String)] = [
+    ("missing Objective divider", s01.replacingOccurrences(of: "\nObjective\n", with: "\n")),
+    ("dividers out of order", s01.replacingOccurrences(of: "Subjective\n", with: "@@S\n").replacingOccurrences(of: "\nObjective\n", with: "\nSubjective\n").replacingOccurrences(of: "@@S\n", with: "Objective\n")),
+    ("no numbered problem", s01.replacingOccurrences(of: "\\d+\\. ", with: "", options: .regularExpression)),
+    ("arbitrary text", "Grocery list:\n- eggs\n- milk\nCall the pharmacy at 3pm."),
+    ("Heidi-format note", heidiNote),
+    ("empty pasteboard", "")
+]
+for (name, text) in invalid {
+    let cap = FreedCapture()
+    let before = okSlots(cap.process(raw: freedFixture("freed_sample_02_no_exam.txt")))
+    check(cap.process(raw: text) == .invalid && before != nil, "shape validation rejects: \(name)")
+}
+check(!FreedCapture.noticeInvalid.contains("Subjective") && FreedCapture.noticeInvalid == "Clipboard doesn't look like a Freed note. Click Copy all in Freed, then F7.",
+      "invalid notice is fixed text (never echoes the pasteboard)")
+// Classification.
+check(FreedParser.classify("Medications started: x") == .inlineLabel, "classify INLINE_LABEL")
+check(FreedParser.classify("Follow-up:") == .subheader, "classify Follow-up: SUBHEADER")
+check(FreedParser.classify("- General: Ambulatory.") == .bullet, "classify bullet with colon BULLET")
+check(FreedParser.classify("Assessment & Plan") == .divider, "classify DIVIDER")
+check(FreedParser.classify("Assessment and Plan:") == .subheader, "classify Assessment and Plan: SUBHEADER")
+// Action items: none for Freed (profile), Heidi unchanged.
+check(SourceProfile.freed.actionItems == false && SourceProfile.freed.captureMethod == "clipboardRead" && SourceProfile.freed.captureKey == "F7",
+      "Freed profile: F7, clipboard read, no action items")
+check(SourceProfile.heidi == SourceProfile(id: .heidi, captureKey: "F8", captureMethod: "selectAllCopy", parser: "heidi", actionItems: true),
+      "Heidi profile unchanged")
+// Paste decisions: Heidi exactly as before; Freed empty exam is a silent no-op.
+check(CaptureGate.decide(slot: 2, failed: false, source: .heidi, hpi: "h", exam: nil, ap: "a") == .beep, "Heidi empty exam still beeps")
+check(CaptureGate.decide(slot: 2, failed: false, source: .freed, hpi: "h", exam: nil, ap: "a") == .silent, "Freed empty exam: silent no-op")
+check(CaptureGate.decide(slot: 2, failed: false, source: .freed, hpi: "h", exam: "Lib exam", ap: "a") == .paste("Lib exam"), "Freed F10 pastes library exam text")
+check(CaptureGate.decide(slot: 1, failed: true, source: .freed, hpi: "h", exam: "e", ap: "a") == .failedNotice, "failed capture still gates every paste")
+check(CaptureGate.decide(slot: 3, failed: false, source: .heidi, hpi: nil, exam: nil, ap: nil) == .beep, "Heidi empty A&P still beeps")
+// App wiring (source checks): F7 reads the pasteboard only; Heidi capture / Clear reset the guard.
+func src(_ f: String) -> String { try! String(contentsOf: root.appendingPathComponent("MedicalNoteAttestor/" + f), encoding: .utf8) }
+func body(_ text: String, from start: String) -> String {
+    guard let r = text.range(of: start) else { return "" }
+    let rest = text[r.lowerBound...]
+    return String(rest.prefix(upTo: rest.range(of: "\n    }\n")?.upperBound ?? rest.endIndex))
+}
+let appSrc = src("MedicalNoteAttestorApp.swift"), slotSrc = src("HeidiSlotManager.swift")
+let f7 = body(appSrc, from: "func performFreedCapture()")
+check(f7.contains("NSPasteboard.general.string(forType: .string)") && !f7.contains("copyFullDocument") && !f7.contains("CGEvent"),
+      "F7 reads the pasteboard only (no synthetic keystrokes)")
+check(f7.contains("if SourceProfile.freed.actionItems {") && !SourceProfile.freed.actionItems
+      && f7.components(separatedBy: "appendActionItems").count == 2,
+      "F7: the only action-item call is behind the Freed profile, which is off")
+check(appSrc.contains(".captureFreed: { Task { @MainActor in await AppDelegate.shared?.performFreedCapture() } }"),
+      "F7 registered through the same hotkey mechanism as F8")
+check(body(slotSrc, from: "func beginCapture()").contains("FreedCapture.shared.resetDuplicateGuard()"), "Heidi capture resets the Freed duplicate guard")
+check(body(slotSrc, from: "func clearNoteSlots()").contains("FreedCapture.shared.resetDuplicateGuard()"), "Clear resets the Freed duplicate guard")
+let adopt = body(slotSrc, from: "func adoptFreed(")
+check(["hpiSlot = ", "apSlot = ", "freedExam = slots.exam", "clearLibrary()", "captureFailed = false"].allSatisfy { adopt.contains($0) },
+      "Freed adoption replaces all three slots and drops library text from the previous capture")
+
+// Library picker parity: empty Freed exam + library exam -> library text alone (shared core).
+check(core.composeExam(scribeExam: "", libraryTexts: ["Lumbar spine exam."]) == "Lumbar spine exam.", "Freed N/A exam + library exam -> library exam")
+
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
