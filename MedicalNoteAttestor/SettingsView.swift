@@ -74,7 +74,7 @@ struct SettingsView: View {
                 .frame(height: 120)
                 .font(.system(size: 11, design: .monospaced))
                 .border(Color.gray.opacity(0.3), width: 1)
-                Text("Pre-loaded into Slot 2. Pastes into Cerner Exam field. Persists across sessions.")
+                Text("Pre-loaded into Slot 2. Pastes into Cerner Exam field. Persists across sessions. After a Freed capture whose exam is empty or N/A, F10 uses this default exam (library exam text, if inserted, comes first).")
                     .font(.caption).foregroundColor(.secondary)
             }
 

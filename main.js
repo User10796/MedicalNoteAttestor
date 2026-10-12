@@ -5,7 +5,7 @@ const fs = require('fs');
 const { createMtimePoller, parseSlotsJson } = require('./lib/slot-poller');
 const core = require('./lib/mna-core');
 const { createLibraryClient, writeUtf8NoBom } = require('./lib/library-client');
-const { createCaptureFlow, createComposedStore, createCaptureTracker, CAPTURE_FAILED_TEXT, isCaptureFailure, slotContent } = require('./lib/capture-flow');
+const { createCaptureFlow, createComposedStore, createCaptureTracker, CAPTURE_FAILED_TEXT, isCaptureFailure, slotContent, examFallback } = require('./lib/capture-flow');
 const { createFreedCapture, encodeFreedResult } = require('./lib/freed-capture');
 const profiles = require('./lib/source-profiles');
 const { createSecretStore } = require('./lib/secrets');
@@ -146,6 +146,7 @@ const DEFAULTS = {
     pasteHotkey2: 'F10',
     pasteHotkey3: 'F11',
     examDotPhrase: '',
+    heidiActionItems: false,     // F8 action items (sends the A&P to Claude; needs the user's key). Off by default.
     libraryEnabled: true,
     libraryInsertion: 'end',     // 'end' | 'after_plan_line'
     libraryClaudeFill: false,    // opt-in: fill library blanks with Claude (needs the user's key)
@@ -274,9 +275,10 @@ let currentCaptureTs = null;
 
 function pasteState() {
     const c = lastComposed && lastComposed.captureTs === currentCaptureTs ? lastComposed : null;
-    // Exam slot: Heidi uses the exam dot-phrase; Freed uses its own Objective section (may be empty).
+    // Exam slot: library text composed for this capture; else Heidi -> default exam (Settings),
+    // Freed -> Freed's exam, or the default exam when Freed's is empty/N/A.
     return { failed: captureFailed, hpi: slots.hpi, ap: slots.ap,
-             examDotPhrase: currentSource === 'freed' ? freedExam : getExamSlot(),
+             examDotPhrase: examFallback(currentSource, freedExam, getExamSlot()),
              composedExam: c && c.exam, composedAp: c && c.ap };
 }
 function effectiveExam() { return slotContent('exam', pasteState()) || null; }
@@ -768,8 +770,8 @@ async function performCapture() {
         bulletsLoading: !!slots.ap
     });
 
-    // Step 4: Fire bullet enrichment in background (Heidi profile: actionItems true, unchanged)
-    if (slots.ap && profiles.get('heidi').actionItems) {
+    // Step 4: action items (sends the A&P to Claude) only if turned on in Settings; off by default.
+    if (slots.ap && (store.get('heidiActionItems') ?? profiles.get('heidi').actionItems)) {
         const originalAP = slots.ap;
         extractActionItems(originalAP).then(bullets => {
             if (bullets && bullets.trim() && slots.ap === originalAP) {
@@ -957,6 +959,7 @@ ipcMain.handle('get-settings', () => {
         pasteHotkey2:             store.get('pasteHotkey2'),
         pasteHotkey3:             store.get('pasteHotkey3'),
         examDotPhrase:            store.get('examDotPhrase'),
+        heidiActionItems:         !!store.get('heidiActionItems'),
         hasClaudeApiKey:          secrets.has('claudeApiKey'),   // never the key itself
         secureStorageAvailable:   secrets.available(),
         customClaudeInstructions: store.get('customClaudeInstructions'),
@@ -1020,6 +1023,7 @@ ipcMain.handle('save-settings', (e, settings) => {
     store.set('apHotkey',                 settings.apHotkey);
     store.set('heidiCopyEnabled',         settings.heidiCopyEnabled);
     store.set('examDotPhrase',            settings.examDotPhrase);
+    if (typeof settings.heidiActionItems === 'boolean') store.set('heidiActionItems', settings.heidiActionItems);
     // The key is write-only from the renderer: a new key is encrypted; clearClaudeApiKey removes it.
     if (settings.clearClaudeApiKey) secrets.set('claudeApiKey', '');
     else if (settings.claudeApiKey && String(settings.claudeApiKey).trim()) {

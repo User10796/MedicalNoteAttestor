@@ -28,6 +28,14 @@ enum CaptureGate {
         return source == .freed && slot == 2 ? .silent : .beep
     }
 
+    /// The scribe-side exam for F10 after a Freed capture (2026-10-12): Freed's exam if present;
+    /// otherwise nothing when library exam text was inserted (the library text is pasted alone);
+    /// otherwise the default exam from Settings. Same order as Windows.
+    static func freedScribeExam(freedExam: String, libraryInserted: Bool, defaultExam: String) -> String {
+        if !freedExam.isEmpty { return freedExam }
+        return libraryInserted ? "" : defaultExam
+    }
+
     /// What paste slot 1 (HPI), 2 (Exam) or 3 (A&P) yields; nil = nothing to paste.
     static func content(slot: Int, failed: Bool, hpi: String?, exam: String?, ap: String?) -> String? {
         if failed { return nil }

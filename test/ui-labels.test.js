@@ -14,10 +14,10 @@ test('main window and Settings tabs say "AI Note" (internal ids unchanged)', () 
     for (const f of ['index.html', 'settings.html', 'renderer.js']) assert.ok(!/Heidi Copy<\/button>|→ Heidi Copy|&rarr; Heidi Copy/.test(read(f)), f);
 });
 
-test('source-specific labels keep the scribe name (hotkeys, picker source label)', () => {
+test('hotkey labels keep the scribe name; everything else says AI Note (2026-10-12)', () => {
     assert.match(read('lib/mna-core.js'), /label: 'Heidi capture'/);
     assert.match(read('lib/mna-core.js'), /label: 'Freed capture'/);
-    assert.match(read('picker.js'), /'Heidi capture'/);
+    assert.match(read('picker.js'), /'AI Note capture'/);
 });
 
 test('Electron: exactly one Settings menu entry, and it opens Settings', () => {

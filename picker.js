@@ -164,7 +164,7 @@
         procs.forEach(p => { procById[p.procedure_id] = p; });
         rows = (data.detection.items || []).map(rowFor);
         if (!rows.length) rows.push({ procedure_id: null, laterality: 'bilateral', checked: true, variant: null, planned: true });
-        $('src').textContent = data.source === 'heidi' ? 'Heidi capture' : (data.source || '');
+        $('src').textContent = 'AI Note capture';
         if (data.sessionLastPayer) {
             const last = C.searchPayers(data.bundle, '', [data.sessionLastPayer])[0];
             if (last) $('payer-hint').textContent = 'Last payer this session: ' + last.name + ' (not pre-selected). ' + $('payer-hint').textContent;
