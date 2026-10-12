@@ -287,6 +287,7 @@ function setHeidiStatus(msg, type, sticky) {
 function updateHotkeyLabels(settings) {
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     set('capture-key-label', settings.captureHotkey || 'F8');
+    set('freed-key-label',   settings.freedCaptureHotkey || 'F7');
     set('paste1-key-label',  settings.pasteHotkey1  || 'F9');
     set('paste2-key-label',  settings.pasteHotkey2  || 'F10');
     set('paste3-key-label',  settings.pasteHotkey3  || 'F11');
@@ -348,7 +349,7 @@ window.electronAPI.onCaptureResult((data) => {
         updateSlotCard('hpi', false, null);
         updateSlotCard('exam', false, null);
         updateSlotCard('ap', false, null);
-        if (data.hotkeys) updateHotkeyLabels({ captureHotkey: data.hotkeys.capture, pasteHotkey1: data.hotkeys.pasteHpi,
+        if (data.hotkeys) updateHotkeyLabels({ captureHotkey: data.hotkeys.capture, freedCaptureHotkey: data.hotkeys.captureFreed, pasteHotkey1: data.hotkeys.pasteHpi,
                                                pasteHotkey2: data.hotkeys.pasteExam, pasteHotkey3: data.hotkeys.pasteAp });
         setHeidiStatus('\u26A0\uFE0F ' + (data.message || 'Capture failed \u2014 nothing to paste'), 'error', true);
         return;
@@ -365,7 +366,7 @@ window.electronAPI.onCaptureResult((data) => {
                       apPrev.classList.remove('empty'); }
     }
 
-    if (data.hotkeys) updateHotkeyLabels({ captureHotkey: data.hotkeys.capture, pasteHotkey1: data.hotkeys.pasteHpi,
+    if (data.hotkeys) updateHotkeyLabels({ captureHotkey: data.hotkeys.capture, freedCaptureHotkey: data.hotkeys.captureFreed, pasteHotkey1: data.hotkeys.pasteHpi,
                                            pasteHotkey2: data.hotkeys.pasteExam, pasteHotkey3: data.hotkeys.pasteAp });
 
     const loaded = [data.hpiLoaded && 'HPI', data.apLoaded && 'A/P'].filter(Boolean).join(' + ');

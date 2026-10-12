@@ -21,6 +21,7 @@ global AP_HEADERS  := ["Assessment and Plan:", "Assessment and plan:", "Assessme
 
 ; ── Load config on startup ────────────────────────────────────────────────────
 
+A_IconTip := "Medical Note Attestor " Chr(0x2014) " AI Note hotkeys"   ; tray tooltip (not the script file name)
 LoadConfig()
 
 ; Configurable hotkeys (Settings > Hotkeys). Electron writes hotkeys.json; we poll it every
@@ -121,7 +122,8 @@ DoPasteExam() {
     global examDotPhrase, lastCaptureTs, captureFailed, activeSource, slotFreedExam
     composed := MnaReadComposed(GetRuntimeDir() "\mna-exam.txt", lastCaptureTs)
     if (activeSource = "freed") {
-        content := MnaContentToPaste(captureFailed, composed, slotFreedExam)
+        LoadConfig()   ; current default exam from Settings
+        content := MnaContentToPaste(captureFailed, composed, MnaFreedExamFallback(slotFreedExam, examDotPhrase))
         if (content != "")
             PasteText(content)
         return

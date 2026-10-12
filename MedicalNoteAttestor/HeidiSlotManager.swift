@@ -117,7 +117,9 @@ class HeidiSlotManager: ObservableObject {
     /// Exam paste: scribe exam (+ library exam text, deduped). Empty scribe exam + library -> library alone.
     var composedExam: String? {
         if captureFailed { return nil }
-        let scribeExam = activeSource == .freed ? freedExam : examSlot
+        let scribeExam = activeSource == .freed
+            ? CaptureGate.freedScribeExam(freedExam: freedExam, libraryInserted: !libraryExams.isEmpty, defaultExam: examSlot)
+            : examSlot
         if libraryExams.isEmpty { return scribeExam.isEmpty ? nil : scribeExam }
         let out = MNACore.shared.composeExam(scribeExam: scribeExam, libraryTexts: libraryExams)
         return out.isEmpty ? nil : out

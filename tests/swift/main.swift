@@ -397,5 +397,16 @@ do {
     check(src("ClaudeAPIClient.swift").contains("timeout: TimeInterval = 20"), "20 s timeout")
 }
 
+// ── Freed F10 default-exam fallback (2026-10-12), same order as Windows ──
+check(CaptureGate.freedScribeExam(freedExam: "Freed exam", libraryInserted: false, defaultExam: "Default") == "Freed exam", "Freed exam present -> Freed exam")
+check(CaptureGate.freedScribeExam(freedExam: "", libraryInserted: true, defaultExam: "Default") == ""
+      && core.composeExam(scribeExam: "", libraryTexts: ["Lib"]) == "Lib", "Freed exam N/A + library inserted -> library text")
+check(CaptureGate.freedScribeExam(freedExam: "", libraryInserted: false, defaultExam: "Default") == "Default", "Freed exam N/A, no library -> default exam")
+check(CaptureGate.decide(slot: 2, failed: false, source: .freed, hpi: "h",
+                         exam: CaptureGate.freedScribeExam(freedExam: "", libraryInserted: false, defaultExam: "").isEmpty ? nil : "x", ap: "a") == .silent,
+      "no Freed exam, no library, no default -> silent no-op")
+check(src("HeidiSlotManager.swift").contains("CaptureGate.freedScribeExam(freedExam: freedExam, libraryInserted: !libraryExams.isEmpty, defaultExam: examSlot)"),
+      "slot manager uses the fallback (stateless; adoptFreed replaces freedExam each capture)")
+
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

@@ -121,6 +121,11 @@ MnaParseFreedResult(raw, ts) {
         "ap", SubStr(body, i2 + 14))
 }
 
+; Freed exam for F10 when no library text was composed: Freed's own exam, else the default exam.
+MnaFreedExamFallback(freedExam, defaultExam) {
+    return freedExam != "" ? freedExam : defaultExam
+}
+
 MnaFreedInvalidText() {
     return "Clipboard doesn't look like a Freed note. Click Copy all in Freed, then F7."
 }

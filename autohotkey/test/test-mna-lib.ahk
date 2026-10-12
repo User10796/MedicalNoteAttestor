@@ -90,6 +90,13 @@ mo := MnaParseHotkeysJson(old)
 Check(IsObject(mo) && mo["captureFreed"] = "F7", "older hotkeys.json without F7 still valid; Freed gets F7")
 Check(MnaParseHotkeysJson(StrReplace(old, '"F9"', '"F7"')) = "", "binding another action to F7 is a duplicate")
 
+; Freed F10 fallback (2026-10-12): Freed exam, else library text (composed), else default exam
+Check(MnaFreedExamFallback("Freed exam", "Default exam") = "Freed exam", "Freed exam wins over the default exam")
+Check(MnaFreedExamFallback("", "Default exam") = "Default exam", "Freed exam N/A -> default exam from Settings")
+Check(MnaFreedExamFallback("", "") = "", "no Freed exam and no default -> nothing (silent)")
+Check(MnaContentToPaste(false, "Library exam", MnaFreedExamFallback("", "Default exam")) = "Library exam", "library text inserted -> library text before the default")
+Check(MnaContentToPaste(true, "", MnaFreedExamFallback("", "Default exam")) = "", "failed capture still pastes nothing")
+
 MnaLog(dir, "test log line")
 Check(InStr(FileRead(dir "\mna-ahk.log", "UTF-8"), "test log line") > 0, "log written")
 

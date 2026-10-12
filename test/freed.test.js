@@ -181,7 +181,7 @@ test('Freed captures never produce MNA-generated action items', () => {
 
 test('source profiles: data, not branching (Heidi unchanged, Freed F7 clipboardRead, no action items)', () => {
     assert.deepStrictEqual(profiles.get('heidi'),
-        { id: 'heidi', captureKey: 'F8', captureMethod: 'selectAllCopy', parser: 'heidi', actionItems: true });
+        { id: 'heidi', captureKey: 'F8', captureMethod: 'selectAllCopy', parser: 'heidi', actionItems: false });   // off by default (2026-10-12)
     assert.deepStrictEqual(profiles.get('freed'),
         { id: 'freed', captureKey: 'F7', captureMethod: 'clipboardRead', parser: 'freed', actionItems: false });
 });
