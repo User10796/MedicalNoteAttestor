@@ -1,6 +1,16 @@
 import Foundation
 import AppKit
 
+/// Why a Claude fill request failed; the reason names map to MNACore.fillNotice (shared text).
+enum ClaudeFillFailure: Error, Equatable {
+    case timeout, network, malformed
+    case http(Int)
+    var reason: String {
+        switch self { case .timeout: return "timeout"; case .network: return "network"; case .malformed: return "malformed"; case .http: return "http" }
+    }
+    var detail: Int? { if case .http(let c) = self { return c }; return nil }
+}
+
 enum ClaudeAPIError: Error, LocalizedError {
     case missingAPIKey
     case invalidResponse
@@ -102,9 +112,11 @@ class ClaudeAPIClient {
         return baseSystemPrompt + "\n\nADDITIONAL INSTRUCTIONS:\n" + customInstructions
     }
 
-    /// POST a prepared Messages API body (Claude fill). User key only; 20 s timeout. Returns the raw JSON.
-    func sendMessages(body: Data, timeout: TimeInterval = 20) async throws -> String {
-        let apiKey = try await getAPIKey()
+    /// POST a prepared Messages API body (Claude fill). User key only. `timeout` bounds the WHOLE
+    /// request (a full template takes Claude well over 20 s). Returns the raw JSON or throws a
+    /// ClaudeFillFailure that names the reason (shown to the user; never the key or note text).
+    static let fillTimeout: TimeInterval = 60
+    func sendMessages(body: Data, apiKey: String, timeout: TimeInterval = ClaudeAPIClient.fillTimeout) async throws -> String {
         var request = URLRequest(url: apiURL)
         request.httpMethod = "POST"
         request.timeoutInterval = timeout
@@ -112,10 +124,18 @@ class ClaudeAPIClient {
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.httpBody = body
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200, let text = String(data: data, encoding: .utf8) else {
-            throw ClaudeAPIError.invalidResponse
-        }
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = timeout
+        config.timeoutIntervalForResource = timeout
+        let session = URLSession(configuration: config)
+        defer { session.finishTasksAndInvalidate() }
+        let data: Data, response: URLResponse
+        do { (data, response) = try await session.data(for: request) }
+        catch let e as URLError where e.code == .timedOut { throw ClaudeFillFailure.timeout }
+        catch { throw ClaudeFillFailure.network }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else { throw ClaudeFillFailure.http(status) }
+        guard let text = String(data: data, encoding: .utf8) else { throw ClaudeFillFailure.malformed }
         return text
     }
 

@@ -159,7 +159,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if ActionItemsPolicy.enabled(source: .heidi, heidiSetting: SettingsManager.shared.heidiActionItems) {
             Task { await slotManager.appendActionItems() }
         }
-        await runLibraryFlow(captureId: captureId)
+        await libraryAfterCapture(captureId: captureId)
     }
 
     // F7: Freed. Sterling clicks Freed's "Copy all" first; this sends NO keystrokes and only reads
@@ -180,22 +180,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if ActionItemsPolicy.enabled(source: .freed, heidiSetting: SettingsManager.shared.heidiActionItems) {
                 Task { await slotManager.appendActionItems() }
             }
-            // Open the picker only for a planned procedure (rule-based, local; same rule as Windows).
-            // Otherwise no picker, no notice, no sound; "Open payer picker" opens it manually.
-            if let ap = slotManager.apSlot, MNACore.shared.freedProcedurePlanned(ap: ap) {
-                await runLibraryFlow(captureId: captureId)
-            }
+            await libraryAfterCapture(captureId: captureId)
+        }
+    }
+
+    /// After any successful capture, Heidi or Freed (whatever key is bound): open the picker only
+    /// when the A&P shows a planned procedure (shared rule, local); otherwise a brief notice.
+    /// "Open payer picker" (button or optional hotkey) always opens it manually.
+    @MainActor
+    func libraryAfterCapture(captureId: UUID) async {
+        let library = LibraryStore.shared
+        guard library.enabled, library.hasLibrary, let ap = HeidiSlotManager.shared.apSlot, !ap.isEmpty else { return }
+        let decision = MNACore.shared.pickerOnCapture(ap: ap)
+        if decision.open {
+            await runLibraryFlow(captureId: captureId)
+        } else if let notice = decision.notice {
+            FailureHUD.show(notice, style: .info)
         }
     }
 
     /// Manual "Open payer picker" (button or optional hotkey): opens the picker for the current
-    /// Freed capture exactly like the automatic open (same flow, same capture id).
+    /// capture, Heidi or Freed, exactly like the automatic open (same flow, same capture id).
     @MainActor
     func openPickerManually() async {
         let slotManager = HeidiSlotManager.shared
-        guard slotManager.activeSource == .freed, !slotManager.captureFailed,
-              let captureId = slotManager.captureId, slotManager.apSlot != nil else {
-            FailureHUD.show("Capture a Freed note first (F7), then open the payer picker.", style: .info)
+        guard !slotManager.captureFailed, let captureId = slotManager.captureId, slotManager.apSlot != nil else {
+            FailureHUD.show("Capture a note first, then open the payer picker.", style: .info)
             return
         }
         await runLibraryFlow(captureId: captureId)
@@ -221,30 +231,65 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         var exams = results.map(\.examText).filter { !$0.isEmpty }
         var dots = results.map(\.dotphrase).filter { !$0.isEmpty }
         var review: FillReview?
-        // Opt-in Claude fill (off by default; user key only). Claude proposes values with quotes;
-        // the shared core verifies them and does the substitution. Failure leaves every blank as-is.
-        if library.claudeFill, ClaudeKey.current() != nil {
+        // Opt-in Claude fill (off by default; user key only) on EVERY library insertion, from any path
+        // and either source. Claude proposes values with quotes; the shared core verifies them and does
+        // the substitution. Once the setting is on it never fails silently: a HUD (visible over any app)
+        // and the main window say why it couldn't run. Failure leaves every blank as-is.
+        if library.claudeFill {
             let templates = exams.map { FillTemplate(slot: "exam", text: $0) } + dots.map { FillTemplate(slot: "ap", text: $0) }
-            if templates.contains(where: { $0.text.contains("___") }) {
-                let note = ["hpi": slotManager.hpiSlot ?? "",
-                            "exam": slotManager.activeSource == .freed ? slotManager.freedExam : "",   // Heidi has no captured exam
-                            "ap": ap]
-                review = FillReview(notice: "Claude fill unavailable \u{2014} blanks left as-is.")
-                if let body = core.fillRequestBody(note: note, templates: templates, model: ClaudeAPIClient.model),
-                   let reply = try? await claudeClient.sendMessages(body: body),
-                   let r = core.fillApply(note: note, templates: templates, response: reply), r.ok, let texts = r.texts {
-                    exams = Array(texts.prefix(exams.count))
-                    dots = Array(texts.suffix(dots.count))
-                    review = FillReview(notice: nil, summary: r.summary, flags: r.flags ?? [],
-                                        templates: templates.indices.map { FillReview.Template(slot: templates[$0].slot, text: texts[$0], marks: r.marks?[$0] ?? []) })
-                    let c = r.counts
-                    logger.info("claude fill: \(c?.filled ?? 0, privacy: .public)/\(c?.blanks ?? 0, privacy: .public) filled, \(c?.rejected ?? 0, privacy: .public) rejected (\((r.rejectionReasons ?? []).joined(separator: "; "), privacy: .public))")
-                } else {
-                    logger.info("claude fill: unavailable")
-                }
-                guard slotManager.captureId == captureId else { return }  // a newer capture arrived meanwhile
+            let note = ["hpi": slotManager.hpiSlot ?? "",
+                        "exam": slotManager.activeSource == .freed ? slotManager.freedExam : "",   // Heidi has no captured exam
+                        "ap": ap]
+            let outcome = await runClaudeFill(note: note, templates: templates)
+            guard slotManager.captureId == captureId else { return }  // a newer capture arrived meanwhile
+            if let texts = outcome.texts {
+                exams = Array(texts.prefix(exams.count))
+                dots = Array(texts.suffix(dots.count))
             }
+            review = outcome.review
         }
         slotManager.setLibrarySelections(captureId: captureId, exams: exams, dotphrases: dots, planLine: planLine, review: review)
     }
+
+    /// One Claude fill attempt. Returns the filled texts (nil = leave blanks as-is) and the review,
+    /// and shows a HUD for progress, the summary, or the reason it couldn't run. Logs reasons and
+    /// counts only (never note text, values or the key).
+    @MainActor
+    func runClaudeFill(note: [String: String], templates: [FillTemplate]) async -> (texts: [String]?, review: FillReview) {
+        let core = MNACore.shared
+        func failed(_ reason: String, _ detail: Int? = nil) -> (texts: [String]?, review: FillReview) {
+            let text = core.fillNotice(reason, detail)
+            logger.info("claude fill: unavailable (\(reason, privacy: .public)\(detail.map { " \($0)" } ?? "", privacy: .public))")
+            FailureHUD.show(text, seconds: 6)
+            return (nil, FillReview(notice: text))
+        }
+        let apiKey: String
+        switch ClaudeKey.lookup() {
+        case .found(let k): apiKey = k
+        case .missing: return failed("no-key")
+        case .unreadable(let status): return failed("key-unreadable", Int(status))
+        }
+        guard templates.contains(where: { $0.text.range(of: "___") != nil }) else {
+            logger.info("claude fill: no blanks")
+            return (nil, FillReview(notice: nil, summary: core.fillNotice("no-blanks")))
+        }
+        guard let body = core.fillRequestBody(note: note, templates: templates, model: ClaudeAPIClient.model) else { return failed("request") }
+        FailureHUD.show(ClaudeFillProgress.started, seconds: ClaudeAPIClient.fillTimeout, style: .info)
+        let reply: String
+        do { reply = try await claudeClient.sendMessages(body: body, apiKey: apiKey) }
+        catch let f as ClaudeFillFailure { return failed(f.reason, f.detail) }
+        catch { return failed("network") }
+        guard let r = core.fillApply(note: note, templates: templates, response: reply), r.ok, let texts = r.texts else {
+            return failed("malformed")
+        }
+        let c = r.counts
+        logger.info("claude fill: \(c?.filled ?? 0, privacy: .public)/\(c?.blanks ?? 0, privacy: .public) filled, \(c?.rejected ?? 0, privacy: .public) rejected (\((r.rejectionReasons ?? []).joined(separator: "; "), privacy: .public))")
+        if let summary = r.summary { FailureHUD.show(summary, style: .info) }
+        return (texts, FillReview(notice: nil, summary: r.summary, flags: r.flags ?? [],
+                                  templates: templates.indices.map { FillReview.Template(slot: templates[$0].slot, text: texts[$0], marks: r.marks?[$0] ?? []) }))
+    }
+}
+
+enum ClaudeFillProgress {
+    static let started = "Claude is filling library blanks\u{2026}"
 }

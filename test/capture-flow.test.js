@@ -142,7 +142,7 @@ test('main.js wires failed captures: clipboard cleared before copy, failure clea
     assert.match(src, /slotContent\('hpi', pasteState\(\)\)/);
     assert.match(src, /function effectiveExam\(\) \{ return slotContent\('exam', pasteState\(\)\)/);
     assert.match(src, /function effectiveAp\(\) \{ return slotContent\('ap', pasteState\(\)\)/);
-    assert.match(src, /if \(isNewCapture && !captureFailed && slots\.ap\) startLibraryFlow/, 'no picker after a failed capture');
+    assert.match(src, /if \(isNewCapture && !captureFailed\) libraryAfterCapture\('heidi', ts\);/, 'no picker after a failed capture');
 });
 
 test('AHK writes the failed flag and gates every paste on it', () => {

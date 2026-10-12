@@ -77,7 +77,10 @@ test('static guard: new library/detection modules make no other network calls', 
             // setting is on and the user entered a key. Behavior is covered by test/claude-fill.test.js.
             assert.match(src, /const API_URL = 'https:\/\/api\.anthropic\.com\/v1\/messages';/);
             assert.ok(!/https?:\/\/(?!api\.anthropic\.com)/.test(src.replace(/^\s*\/\/.*$/gm, '')), 'no other host');
-            assert.match(src, /if \(!isEnabled\(\)\) return null;\s*\n\s*const key = getKey\(\);\s*\n\s*if \(!key\) return null;/);
+            // Off -> no request; no or unreadable key -> no request (a visible notice instead).
+            assert.match(src, /if \(!isEnabled\(\)\) return null;/);
+            assert.match(src, /if \(key\.state === 'unreadable'\) return failed\('key-unreadable'\);\s*\n\s*if \(key\.state !== 'found' \|\| !key\.value\) return failed\('no-key'\);/);
+            assert.ok(src.indexOf("return failed('no-key')") < src.indexOf('fetchImpl(API_URL'), 'key checked before any request');
             assert.ok(!/require\(['"](https?|net|electron)['"]\)/.test(src));
             continue;
         }

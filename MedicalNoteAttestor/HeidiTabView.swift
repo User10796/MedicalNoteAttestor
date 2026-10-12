@@ -51,7 +51,7 @@ struct HeidiTabView: View {
                 Button("Open payer picker") { Task { await AppDelegate.shared?.openPickerManually() } }
                     .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
-                    .help("Open the payer and procedure picker for the current Freed capture")
+                    .help("Open the payer and procedure picker for the current capture")
             }
 
             if slotManager.captureFailed {

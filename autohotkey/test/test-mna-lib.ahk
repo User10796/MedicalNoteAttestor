@@ -97,6 +97,14 @@ Check(MnaFreedExamFallback("", "") = "", "no Freed exam and no default -> nothin
 Check(MnaContentToPaste(false, "Library exam", MnaFreedExamFallback("", "Default exam")) = "Library exam", "library text inserted -> library text before the default")
 Check(MnaContentToPaste(true, "", MnaFreedExamFallback("", "Default exam")) = "", "failed capture still pastes nothing")
 
+; Notices from Electron (2026-10-12): newer id shown once; malformed or repeated ignored
+n := MnaParseNotice("MNA-NOTICE1 17-1`r`nNo planned procedure detected", "")
+Check(IsObject(n) && n["id"] = "17-1" && n["message"] = "No planned procedure detected", "notice parsed")
+Check(MnaParseNotice("MNA-NOTICE1 17-1`r`nNo planned procedure detected", "17-1") = "", "same notice not shown twice")
+Check(IsObject(MnaParseNotice(Chr(0xFEFF) "MNA-NOTICE1 18-2`r`nClaude fill timed out", "17-1")), "BOM tolerated; newer id shown")
+Check(MnaParseNotice("MNA-NOTICE1 19-3", "") = "", "truncated notice ignored")
+Check(MnaParseNotice("garbage`r`ntext", "") = "", "garbage ignored")
+
 MnaLog(dir, "test log line")
 Check(InStr(FileRead(dir "\mna-ahk.log", "UTF-8"), "test log line") > 0, "log written")
 
