@@ -34,3 +34,10 @@
 - macOS Freed (F7): Swift port in `FreedParser.swift` / `FreedCapture.swift`, tested by `scripts/test-swift.sh` against the
   shared `test/fixtures/freed/` (same expected outputs as Windows). Build stamp: Xcode phase "Stamp build info"
   (`scripts/stamp-macos-build.sh`, commit + `-dirty`, UTC time, fails if empty); tests: `scripts/test-build-stamp.sh`.
+- Picker gating (2026-10-12): every capture, Heidi or Freed, auto-opens the payer picker only when its A&P shows a
+  planned procedure (`MNACore.pickerOnCapture` / `procedurePlanned`, one rule for both sources); otherwise a brief
+  notice. "Open payer picker" works for either source. Rules follow the capture SOURCE (hotkey action), never the
+  key name: Sterling binds Freed capture to F8 on some machines.
+- Claude fill runs on every library insertion when the setting is on and never fails silently: no key, unreadable
+  key, HTTP error, network error, timeout (60 s) or a malformed reply each show a notice (`MNACore.fillNotice`).
+  Windows notices reach AHK through `mna-notice.txt` (`MNA-NOTICE1 <id>`, tooltip at the cursor); Mac uses FailureHUD.

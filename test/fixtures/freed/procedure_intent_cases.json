@@ -130,5 +130,57 @@
  {
   "text": "Kyphoplasty T12 scheduled",
   "planned": true
+ },
+ {
+  "text": "Patient is scheduled for right L4-L5 TFESI",
+  "planned": true
+ },
+ {
+  "text": "Plan L5-S1 ILESI",
+  "planned": true
+ },
+ {
+  "text": "Consider TFESI if no improvement",
+  "planned": false
+ },
+ {
+  "text": "Scheduled for bilateral L4-L5 RFA",
+  "planned": true
+ },
+ {
+  "text": "Schedule left SIJI",
+  "planned": true
+ },
+ {
+  "text": "Schedule bilateral L3-L5 LMBB",
+  "planned": true
+ },
+ {
+  "text": "Proceed with right genicular RFTC",
+  "planned": true
+ },
+ {
+  "text": "Schedule left GNB",
+  "planned": true
+ },
+ {
+  "text": "Will schedule C7-T1 CESI",
+  "planned": true
+ },
+ {
+  "text": "Plan: Schedule right L4-L5 TFESI",
+  "planned": true
+ },
+ {
+  "text": "Plan: Consider repeat TFESI",
+  "planned": false
+ },
+ {
+  "text": "Procedures considered: TFESI",
+  "planned": false
+ },
+ {
+  "text": "Schedule MRI lumbar spine",
+  "planned": false
  }
 ]

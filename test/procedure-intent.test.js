@@ -78,10 +78,14 @@ test('manual "Open payer picker" after a non-planned Freed capture inserts libra
     assert.ok(exam.text.includes('Lumbar spine and lower extremities:'), 'library exam text inserted');
 });
 
-test('main.js wiring: Freed auto-open is gated by the rule; manual open + hotkey reuse the same flow; Heidi untouched', () => {
+test('main.js wiring: every capture (Heidi and Freed) is gated by the rule; manual open + hotkey reuse the same flow', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
-    assert.match(src, /if \(slots\.ap && core\.freedProcedurePlanned\(slots\.ap, getLibraryClient\(\)\.bundle\(\)\)\) startLibraryFlow\('freed', ts\);/);
-    assert.match(src, /if \(isNewCapture && !captureFailed && slots\.ap\) startLibraryFlow\('heidi', ts\);/, 'Heidi auto-open unchanged');
+    assert.match(src, /const d = core\.pickerOnCapture\(slots\.ap, bundle\);\s*\n\s*if \(d\.open\) startLibraryFlow\(source, captureTs\);\s*\n\s*else if \(d\.notice\) showNotice\(d\.notice\);/);
+    assert.match(src, /libraryAfterCapture\('freed', ts\);/, 'Freed (AHK F7 path)');
+    assert.match(src, /if \(isNewCapture && !captureFailed\) libraryAfterCapture\('heidi', ts\);/, 'Heidi (AHK capture path)');
+    assert.match(src, /libraryAfterCapture\('heidi', captureTs\);/, 'Heidi (in-window Capture button)');
+    assert.ok(!/startLibraryFlow\('(heidi|freed)'/.test(src), 'no ungated auto-open left');
+    assert.match(src, /startLibraryFlow\(currentSource, currentCaptureTs\);/, 'manual open works for both sources');
     assert.match(src, /function openPickerManually\(\)/);
     assert.match(src, /ipcMain\.handle\('open-picker-manually'/);
     assert.ok(!/api\.anthropic\.com[\s\S]{0,400}freedProcedurePlanned|freedProcedurePlanned[\s\S]{0,400}api\.anthropic/.test(src), 'no network for detection');

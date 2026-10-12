@@ -375,11 +375,13 @@ window.electronAPI.onCaptureResult((data) => {
     setHeidiStatus(ok ? `\u2713 Captured: ${loaded}${lib}` : '\u26A0\uFE0F No sections found', ok ? 'success' : 'error');
 });
 
-// Freed capture notices ("Already captured", "Clipboard doesn't look like a Freed note...").
-// They never contain clipboard text. Slots are unchanged when one of these is shown.
+// Notices: Freed capture ("Already captured", "Clipboard doesn't look like a Freed note..."), the picker
+// ("No planned procedure detected...") and Claude fill (progress, summary, or why it couldn't run).
+// They never contain note text.
+const INFO_NOTICE = /^(Already captured|No planned procedure|Claude is filling|Filled \d|Claude fill: no blanks)/;
 window.electronAPI.onSourceNotice((message) => {
-    setHeidiStatus((/^Already captured/.test(message) ? '\u2139\uFE0F ' : '\u26A0\uFE0F ') + message,
-                   /^Already captured/.test(message) ? '' : 'error');
+    const info = INFO_NOTICE.test(message);
+    setHeidiStatus((info ? '\u2139\uFE0F ' : '\u26A0\uFE0F ') + message, info ? '' : 'error');
 });
 
 window.electronAPI.onBulletsReady((data) => {

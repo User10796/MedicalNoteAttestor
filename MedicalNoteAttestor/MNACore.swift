@@ -104,7 +104,9 @@ final class MNACore {
               info: function () { return __bundle ? { built_at: __bundle.built_at, release_tag: __bundle.release_tag || null,
                                                       commit: __bundle.commit || null } : null; },
               detect: function (ap) { return MNACore.detectProcedures(ap, __bundle); },
-              freedPlanned: function (ap) { return MNACore.freedProcedurePlanned(ap, __bundle); },
+              freedPlanned: function (ap) { return MNACore.procedurePlanned(ap, __bundle); },
+              pickerOnCapture: function (ap) { return MNACore.pickerOnCapture(ap, __bundle); },
+              terms: function () { return MNACore.procedureTerms(__bundle); },
               linePlanned: function (line) { return MNACore.procedureLineIsPlanned(line, __bundle); },
               fillBody: function (note, templates, model) { return MNACore.fillRequest(note, templates, model).body; },
               resolve: function (payer, items) { return MNACore.resolveSelections(__bundle, payer, items); },
@@ -152,8 +154,16 @@ final class MNACore {
 
     // MARK: detection / resolution / composition
 
-    /// Freed: does the A&P show a planned procedure? (rule-based, local; same rule as Windows)
+    /// Any source: does the A&P show a planned procedure? (rule-based, local; same rule as Windows)
     func freedProcedurePlanned(ap: String) -> Bool { call("__S.freedPlanned", [ap], as: Bool.self) ?? false }
+    /// After any capture (Heidi or Freed): open the picker only for a planned procedure, else a notice.
+    struct PickerDecision: Decodable, Equatable { let open: Bool; let notice: String? }
+    func pickerOnCapture(ap: String) -> PickerDecision {
+        call("__S.pickerOnCapture", [ap], as: PickerDecision.self) ?? PickerDecision(open: false, notice: nil)
+    }
+    func procedureTerms() -> [String] { call("__S.terms", [], as: [String].self) ?? [] }
+    func captureSource(forAction action: String) -> String? { call("MNACore.captureSourceForAction", [action], as: String?.self) ?? nil }
+    var noPlannedNotice: String { call("(function () { return MNACore.NO_PLANNED_NOTICE; })", [], as: String.self) ?? "" }
     func procedureLineIsPlanned(_ line: String) -> Bool { call("__S.linePlanned", [line], as: Bool.self) ?? false }
 
     func detect(ap: String) -> Detection { call("__S.detect", [ap], as: Detection.self) ?? Detection(items: [], noneDetected: true) }
@@ -175,6 +185,10 @@ final class MNACore {
     func fillRequestBody(note: [String: String], templates: [FillTemplate], model: String) -> Data? {
         guard let t = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(templates)) else { return nil }
         return callJSON("__S.fillBody", [note, t, model])
+    }
+    /// Visible notice for a fill that can't run or failed (same text as Windows).
+    func fillNotice(_ reason: String, _ detail: Int? = nil) -> String {
+        call("MNACore.fillNotice", [reason, detail ?? NSNull()], as: String.self) ?? "Claude fill unavailable \u{2014} blanks left as-is."
     }
     func fillApply(note: [String: String], templates: [FillTemplate], response: String) -> FillResult? {
         guard let t = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(templates)) else { return nil }

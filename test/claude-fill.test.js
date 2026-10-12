@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const core = require('../lib/mna-core');
 const freed = require('../lib/freed-parser');
-const { createClaudeFiller, API_URL } = require('../lib/claude-fill-client');
+const { createClaudeFiller, API_URL, STARTED } = require('../lib/claude-fill-client');
 const { createCaptureFlow, createComposedStore } = require('../lib/capture-flow');
 const { tmpDir, response } = require('./helpers');
 
@@ -139,45 +139,82 @@ test('request: fixed tool schema, forced tool use, model from CLAUDE_MODEL, mini
 // ── client: opt-in, key, errors (no live API) ────────────────────────────────────────────────
 const results = () => core.resolveSelections(bundle, 'medicare_ab_ga', [{ procedure_id: 'lumbar_tfesi', laterality: 'left', checked: true, line: 0 }]);
 function filler({ enabled = true, key = 'test-key-not-real', reply, delay = 0 } = {}) {
-    const calls = [];
+    const calls = [], notices = [];
     const fetchImpl = async (url, opts) => {
         calls.push({ url, opts });
         if (delay) await new Promise((r, j) => { const t = setTimeout(r, delay); opts.signal.addEventListener('abort', () => { clearTimeout(t); const e = new Error('aborted'); e.name = 'AbortError'; j(e); }); });
         if (reply instanceof Error) throw reply;
         return reply || response(200, { json: recorded });
     };
-    return { f: createClaudeFiller({ fetchImpl, getKey: () => key, isEnabled: () => enabled, model: 'claude-sonnet-4-6', timeoutMs: 50 }), calls };
+    return { f: createClaudeFiller({ fetchImpl, getKey: () => key, isEnabled: () => enabled, model: 'claude-sonnet-4-6', timeoutMs: 50,
+                                     notify: (text, kind) => notices.push({ text, kind }) }), calls, notices };
 }
-test('setting off (the default) -> no API call, behavior unchanged', async () => {
-    const { f, calls } = filler({ enabled: false });
+test('setting off (the default) -> no API call, no notice, behavior unchanged', async () => {
+    const { f, calls, notices } = filler({ enabled: false });
     assert.strictEqual(await f.fill({ note, results: results() }), null);
     assert.strictEqual(calls.length, 0);
+    assert.deepStrictEqual(notices, []);
 });
-test('no key -> no API call', async () => {
-    const { f, calls } = filler({ key: '' });
-    assert.strictEqual(await f.fill({ note, results: results() }), null);
+test('setting on, no key -> no API call, visible notice saying why (never silent)', async () => {
+    const { f, calls, notices } = filler({ key: '' });
+    const base = results();
+    const r = await f.fill({ note, results: base });
     assert.strictEqual(calls.length, 0);
+    assert.deepStrictEqual(r.results, base);
+    assert.strictEqual(r.review.notice, 'Claude fill: no API key saved \u2014 blanks left as-is. Add your key in Settings.');
+    assert.deepStrictEqual(notices, [{ text: r.review.notice, kind: 'error' }]);
 });
-test('on + key -> one POST to the Messages API with the request body; results filled', async () => {
-    const { f, calls } = filler();
+test('setting on, key unreadable (safeStorage decrypt failed) -> visible notice', async () => {
+    const { f, calls, notices } = filler({ key: { state: 'unreadable' } });
+    const r = await f.fill({ note, results: results() });
+    assert.strictEqual(calls.length, 0);
+    assert.match(r.review.notice, /^Claude fill: your saved API key couldn\u2019t be read/);
+    assert.strictEqual(notices[0].kind, 'error');
+});
+test('on + key -> one POST to the Messages API with the request body; results filled; progress + summary shown', async () => {
+    const { f, calls, notices } = filler();
     const r = await f.fill({ note, results: results() });
     assert.strictEqual(calls.length, 1);
     assert.strictEqual(calls[0].url, API_URL);
     assert.strictEqual(calls[0].opts.method, 'POST');
-    assert.strictEqual(JSON.parse(calls[0].opts.body).tool_choice.name, 'record_blank_values');
+    const body = JSON.parse(calls[0].opts.body);
+    assert.strictEqual(body.tool_choice.name, 'record_blank_values');
+    assert.strictEqual(body.max_tokens, 4096);
     const filled = r.results.find(x => x.insert);
     assert.strictEqual(filled.dotphrase, read('expected_ap.txt').replace(/\n$/, ''));
     assert.strictEqual(filled.examText, read('expected_exam.txt').replace(/\n$/, ''));
     assert.match(r.review.summary, /^Filled 19 of 25 blanks/);
+    assert.deepStrictEqual(notices.map(n => n.kind), ['info', 'info']);
+    assert.strictEqual(notices[0].text, STARTED);
+    assert.strictEqual(notices[1].text, r.review.summary);
 });
-test('API error, timeout or malformed reply -> blanks left as-is, notice', async () => {
-    for (const opts of [{ reply: response(500, { json: {} }) }, { reply: new Error('offline') }, { delay: 500 }, { reply: response(200, { json: { content: [] } }) }]) {
-        const { f } = filler(opts);
+test('API error, network error, timeout or malformed reply -> blanks left as-is, notice with the reason', async () => {
+    const cases = [
+        [{ reply: response(500, { json: {} }) }, 'Claude fill failed (HTTP 500: Anthropic service error) \u2014 blanks left as-is.'],
+        [{ reply: response(401, { json: {} }) }, 'Claude fill failed (HTTP 401: check your API key) \u2014 blanks left as-is.'],
+        [{ reply: new Error('offline') }, 'Claude fill failed (network error) \u2014 blanks left as-is.'],
+        [{ delay: 500 }, 'Claude fill timed out after 60 s \u2014 blanks left as-is.'],
+        [{ reply: response(200, { json: { content: [] } }) }, 'Claude fill failed (unexpected reply) \u2014 blanks left as-is.']
+    ];
+    for (const [opts, text] of cases) {
+        const { f, notices } = filler(opts);
         const base = results();
         const r = await f.fill({ note, results: base });
         assert.deepStrictEqual(r.results, base);
-        assert.strictEqual(r.review.notice, 'Claude fill unavailable — blanks left as-is.');
+        assert.strictEqual(r.review.notice, text);
+        assert.deepStrictEqual(notices[notices.length - 1], { text, kind: 'error' });
     }
+});
+test('inserted text with no blanks -> no API call, review says so', async () => {
+    const { f, calls } = filler();
+    const noBlanks = results().map(x => ({ ...x, examText: 'Exam.', dotphrase: 'Plan.' }));
+    const r = await f.fill({ note, results: noBlanks });
+    assert.strictEqual(calls.length, 0);
+    assert.strictEqual(r.review.summary, 'Claude fill: no blanks in the inserted library text.');
+});
+test('timeout default is 60 s (a full template takes Claude more than 20 s)', () => {
+    assert.strictEqual(core.FILL_TIMEOUT_MS, 60000);
+    assert.match(fs.readFileSync(path.join(__dirname, '..', 'lib', 'claude-fill-client.js'), 'utf8'), /timeoutMs = core\.FILL_TIMEOUT_MS/);
 });
 test('logs counts and reasons only (never note text or values)', async () => {
     const lines = [];
@@ -211,7 +248,8 @@ test('capture flow: Claude fill feeds the composed F10/F11 text; off leaves it e
 test('main.js wiring: setting off by default, user key only, CLAUDE_MODEL, captured note only, review never pasted', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
     assert.match(src, /libraryClaudeFill: false,/);
-    assert.match(src, /getKey: \(\) => getClaudeKey\(\),/);
+    assert.match(src, /getKey: \(\) => secrets\.lookup\('claudeApiKey'\),/);
+    assert.match(src, /notify: \(text\) => showNotice\(text\)/, 'fill notices are visible');
     assert.match(src, /isEnabled: \(\) => !!store\.get\('libraryClaudeFill'\),/);
     assert.match(src, /model: CLAUDE_MODEL,/);
     assert.match(src, /const fillExam = source === 'freed' \? freedExam : '';/);

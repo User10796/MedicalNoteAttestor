@@ -129,3 +129,20 @@ MnaFreedExamFallback(freedExam, defaultExam) {
 MnaFreedInvalidText() {
     return "Clipboard doesn't look like a Freed note. Click Copy all in Freed, then F7."
 }
+
+; Electron writes mna-notice.txt for brief, non-blocking notices (no planned procedure, Claude fill
+; progress / summary / why it couldn't run): "MNA-NOTICE1 <id>`r`n<message>". Never note text.
+; Returns a Map (id, message) for a notice newer than lastId, else "".
+MnaParseNotice(raw, lastId) {
+    raw := RegExReplace(raw, "^\x{FEFF}", "")
+    pos := InStr(raw, "`r`n")
+    if (pos = 0)
+        return ""
+    parts := StrSplit(SubStr(raw, 1, pos - 1), " ")
+    if (parts.Length != 2 || parts[1] != "MNA-NOTICE1" || parts[2] = "" || parts[2] = lastId)
+        return ""
+    msg := SubStr(raw, pos + 2)
+    if (msg = "")
+        return ""
+    return Map("id", parts[2], "message", msg)
+}

@@ -2,10 +2,24 @@ import Foundation
 import Security
 
 // Secrets live in the macOS Keychain, never in UserDefaults or source.
+/// A lookup that says why there is no value (so Claude features can tell the user, never fail silently).
+enum SecretLookup: Equatable {
+    case found(String)
+    case missing
+    case unreadable(Int32)   // OSStatus from the Keychain (e.g. access denied); never the value
+}
+
 protocol SecretStore: AnyObject {
-    func read(_ account: String) -> String?
+    func lookup(_ account: String) -> SecretLookup
     @discardableResult func save(_ value: String, account: String) -> Bool
     func delete(_ account: String)
+}
+
+extension SecretStore {
+    func read(_ account: String) -> String? {
+        if case .found(let s) = lookup(account) { return s }
+        return nil
+    }
 }
 
 final class KeychainSecretStore: SecretStore {
@@ -15,14 +29,15 @@ final class KeychainSecretStore: SecretStore {
     private func query(_ account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
     }
-    func read(_ account: String) -> String? {
+    func lookup(_ account: String) -> SecretLookup {
         var q = query(account)
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data,
-              let s = String(data: d, encoding: .utf8), !s.isEmpty else { return nil }
-        return s
+        let status = SecItemCopyMatching(q as CFDictionary, &out)
+        if status == errSecItemNotFound { return .missing }
+        guard status == errSecSuccess, let d = out as? Data, let s = String(data: d, encoding: .utf8) else { return .unreadable(status) }
+        return s.isEmpty ? .missing : .found(s)
     }
     @discardableResult
     func save(_ value: String, account: String) -> Bool {
@@ -39,7 +54,12 @@ final class KeychainSecretStore: SecretStore {
 final class MemorySecretStore: SecretStore {
     var values: [String: String] = [:]
     var failSaves = false
-    func read(_ account: String) -> String? { values[account] }
+    var unreadableStatus: Int32? = nil   // simulate a Keychain read error
+    func lookup(_ account: String) -> SecretLookup {
+        if let st = unreadableStatus { return .unreadable(st) }
+        guard let v = values[account], !v.isEmpty else { return .missing }
+        return .found(v)
+    }
     @discardableResult func save(_ value: String, account: String) -> Bool {
         if failSaves { return false }
         values[account] = value; return true
@@ -56,8 +76,18 @@ enum ClaudeKey {
     static let legacyDefaultsKeys = ["claudeAPIKey", "AnthropicAPIKey"]
 
     static func current(in store: SecretStore = ClaudeKey.store) -> String? {
-        let k = store.read(account)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return k.isEmpty ? nil : k
+        if case .found(let k) = lookup(in: store) { return k }
+        return nil
+    }
+
+    /// The key, or why there isn't one: .missing (none saved) or .unreadable (Keychain error).
+    static func lookup(in store: SecretStore = ClaudeKey.store) -> SecretLookup {
+        switch store.lookup(account) {
+        case .found(let raw):
+            let k = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return k.isEmpty ? .missing : .found(k)
+        case let other: return other
+        }
     }
 
     static func set(_ value: String, in store: SecretStore = ClaudeKey.store) -> Bool {

@@ -8,6 +8,7 @@ global slotHPI := ""
 global slotAP  := ""
 global examDotPhrase := ""
 global lastCaptureTs := ""          ; A_TickCount of the capture these slots belong to
+global lastNoticeId := ""          ; last Electron notice shown (mna-notice.txt)
 global captureFailed := false       ; last F8 failed: F9/F10/F11 paste nothing until a good capture
 global activeSource := "heidi"      ; which scribe filled the slots: "heidi" (F8) or "freed" (F7)
 global slotFreedExam := ""          ; Freed's own exam (Objective); may be empty -> F10 silent no-op
@@ -31,6 +32,15 @@ SetTimer(CheckHotkeysFile, 250)
 
 ; Freed (F7): adopt Electron's parsed result for the pending capture (250 ms, like the slot file).
 SetTimer(CheckFreedResult, 250)
+
+; Notices from Electron (mna-notice.txt): shown as a tooltip at the cursor. One left over from before
+; launch is never shown.
+try {
+    n := MnaParseNotice(FileRead(GetRuntimeDir() "\mna-notice.txt", "UTF-8"), "")
+    if IsObject(n)
+        lastNoticeId := n["id"]
+}
+SetTimer(CheckNoticeFile, 250)
 
 ; ── Hotkeys ───────────────────────────────────────────────────────────────────
 
@@ -186,6 +196,21 @@ CheckFreedResult() {
     SoundBeep 880, 80
     Sleep 60
     SoundBeep 880, 80
+}
+
+CheckNoticeFile() {
+    global lastNoticeId
+    path := GetRuntimeDir() "\mna-notice.txt"
+    if !FileExist(path)
+        return
+    try raw := FileRead(path, "UTF-8")
+    catch
+        return   ; mid-write; try again in 250 ms
+    n := MnaParseNotice(raw, lastNoticeId)
+    if !IsObject(n)
+        return
+    lastNoticeId := n["id"]
+    ShowNotice(n["message"])
 }
 
 ShowNotice(msg) {

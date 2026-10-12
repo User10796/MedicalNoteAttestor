@@ -131,7 +131,7 @@ function readSlotsFile() {
             if (captureFailed) { slots.hpi = null; slots.ap = null; }
         }
         sendSlotState();
-        if (isNewCapture && !captureFailed && slots.ap) startLibraryFlow('heidi', ts);
+        if (isNewCapture && !captureFailed) libraryAfterCapture('heidi', ts);
         return true;
     } catch (e) { console.error('Failed to read slots file:', e.message); return false; }
 }
@@ -292,11 +292,22 @@ function libraryUiState() {
 // Opt-in Claude fill of inserted library blanks (SPEC_library_claude_fill). Off by default; user key only.
 const claudeFiller = createClaudeFiller({
     fetchImpl: (url, opts) => net.fetch(url, opts),
-    getKey: () => getClaudeKey(),
+    getKey: () => secrets.lookup('claudeApiKey'),   // { state: found | missing | unreadable }
     isEnabled: () => !!store.get('libraryClaudeFill'),
     model: CLAUDE_MODEL,
-    log: (m) => console.log(m)          // counts and reasons only
+    log: (m) => console.log(m),         // counts and reasons only
+    notify: (text) => showNotice(text)  // never silent once the setting is on
 });
+
+// A brief, non-blocking notice: the main window's status line, and (Windows) an AHK tooltip at the
+// cursor so it is visible while the user is in Freed, Heidi or Cerner. Never note text.
+let noticeSeq = 0;
+function showNotice(text) {
+    if (mainWindow) mainWindow.webContents.send('source-notice', text);
+    if (process.platform !== 'win32') return;
+    try { writeUtf8NoBom(path.join(getAhkPaths().dir, 'mna-notice.txt'), `MNA-NOTICE1 ${Date.now()}-${++noticeSeq}\r\n${text}`); }
+    catch (e) { console.error('notice write failed:', e.message); }
+}
 
 const captureFlow = createCaptureFlow({
     getBundle: () => getLibraryClient().bundle(),
@@ -323,6 +334,16 @@ function beginCapture(captureTs) {
     lastComposed = null;
     if (mainWindow) mainWindow.webContents.send('library-fill-review', null);
     captureFlow.reset();
+}
+
+// After any successful capture, Heidi or Freed (whatever key is bound): open the picker only when the
+// A&P shows a planned procedure (shared rule); otherwise a brief notice. Manual open always works.
+function libraryAfterCapture(source, captureTs) {
+    const bundle = getLibraryClient().bundle();
+    if (!slots.ap || !store.get('libraryEnabled') || !bundle) return;
+    const d = core.pickerOnCapture(slots.ap, bundle);
+    if (d.open) startLibraryFlow(source, captureTs);
+    else if (d.notice) showNotice(d.notice);
 }
 
 function startLibraryFlow(source, captureTs) {
@@ -384,9 +405,7 @@ function readFreedClip() {
             captureFailed = false;
             beginCapture(ts);
             sendSlotState();
-            // Open the picker only for a planned procedure (rule-based, local). Otherwise no picker,
-            // no notice, no sound; "Open payer picker" (button / optional hotkey) opens it manually.
-            if (slots.ap && core.freedProcedurePlanned(slots.ap, getLibraryClient().bundle())) startLibraryFlow('freed', ts);
+            libraryAfterCapture('freed', ts);
         }
         return true;
     } catch (e) {
@@ -395,12 +414,12 @@ function readFreedClip() {
     }
 }
 // Manual "Open payer picker" (main-window button or the optional hotkey): opens the picker for the
-// current Freed capture exactly like the automatic open (same flow, same capture timestamp).
+// current capture, Heidi or Freed, exactly like the automatic open (same flow, same capture timestamp).
 function openPickerManually() {
-    if (currentSource !== 'freed' || !currentCaptureTs || captureFailed || !slots.ap) {
-        return { ok: false, message: 'Capture a Freed note first (F7), then open the payer picker.' };
+    if (!currentCaptureTs || captureFailed || !slots.ap) {
+        return { ok: false, message: 'Capture a note first, then open the payer picker.' };
     }
-    startLibraryFlow('freed', currentCaptureTs);
+    startLibraryFlow(currentSource, currentCaptureTs);
     return { ok: true };
 }
 ipcMain.handle('open-picker-manually', () => openPickerManually());
@@ -638,7 +657,7 @@ function registerHotkeys() {
             tryRegister(paste3Key,  () => pasteSlot('ap'));
         }
         // Optional "Open payer picker" hotkey (unbound by default). AHK doesn't handle it; Electron does.
-        if (hk.openPicker) tryRegister(hk.openPicker, () => { const r = openPickerManually(); if (!r.ok && mainWindow) mainWindow.webContents.send('source-notice', r.message); });
+        if (hk.openPicker) tryRegister(hk.openPicker, () => { const r = openPickerManually(); if (!r.ok) showNotice(r.message); });
 
         // Legacy single-section hotkeys — keep on all platforms as fallback
         tryRegister(hpiKey, () => extractAndCopySection('hpi'));
@@ -747,6 +766,9 @@ async function performCapture() {
     // Step 3: Read and parse clipboard
     const text = clipboard.readText();
     const captureTs = String(Date.now());
+    // This is a Heidi capture, whatever source came before.
+    currentSource = 'heidi'; freedExam = '';
+    freedCapture.resetDuplicateGuard();
     beginCapture(captureTs);
     slots.hpi = (text && extractHPI(text)) || null;
     slots.ap  = (text && extractAP(text))  || null;
@@ -757,7 +779,7 @@ async function performCapture() {
         return;
     }
     const exam = getExamSlot();
-    if (slots.ap) startLibraryFlow('heidi', captureTs);
+    libraryAfterCapture('heidi', captureTs);
 
     if (mainWindow) mainWindow.webContents.send('capture-result', {
         success: true,

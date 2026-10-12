@@ -281,14 +281,18 @@ do {
 }
 let appSrc2 = src("MedicalNoteAttestorApp.swift")
 let f7b = body(appSrc2, from: "func performFreedCapture()")
-check(f7b.contains("MNACore.shared.freedProcedurePlanned(ap: ap)") && f7b.contains("await runLibraryFlow(captureId: captureId)"),
+check(f7b.contains("await libraryAfterCapture(captureId: captureId)") && !f7b.contains("runLibraryFlow"),
       "Freed auto-open gated by the planned-procedure rule")
 let manual = body(appSrc2, from: "func openPickerManually()")
-check(manual.contains("slotManager.activeSource == .freed") && manual.contains("await runLibraryFlow(captureId: captureId)"),
-      "manual open reuses the same library flow for the current Freed capture")
+check(!manual.contains("activeSource") && manual.contains("await runLibraryFlow(captureId: captureId)"),
+      "manual open reuses the same library flow for the current capture, Heidi or Freed")
 check(appSrc2.contains(".openPicker: { Task { @MainActor in await AppDelegate.shared?.openPickerManually() } }"), "optional hotkey wired to manual open")
-check(body(appSrc2, from: "func performCapture()").contains("await runLibraryFlow(captureId: captureId)")
-      && !body(appSrc2, from: "func performCapture()").contains("freedProcedurePlanned"), "Heidi auto-open unchanged")
+check(body(appSrc2, from: "func performCapture()").contains("await libraryAfterCapture(captureId: captureId)")
+      && !body(appSrc2, from: "func performCapture()").contains("runLibraryFlow"), "Heidi auto-open gated by the same rule")
+let afterCap = body(appSrc2, from: "func libraryAfterCapture(captureId: UUID)")
+check(afterCap.contains("MNACore.shared.pickerOnCapture(ap: ap)") && afterCap.contains("if decision.open {")
+      && afterCap.contains("await runLibraryFlow(captureId: captureId)") && afterCap.contains("FailureHUD.show(notice, style: .info)"),
+      "after any capture: planned -> picker, else a brief non-blocking notice")
 check(src("HeidiTabView.swift").contains("Button(\"Open payer picker\")"), "main window has an Open payer picker button")
 // Optional hotkey: unbound by default, rebindable, duplicate rejected, browser key warned, clearable.
 do {
@@ -391,10 +395,13 @@ do {
               "request: model + forced tool use (same body as Windows)")
     } else { check(false, "request body builds") }
     let flow = body(src("MedicalNoteAttestorApp.swift"), from: "func runLibraryFlow(")
-    check(flow.contains("if library.claudeFill, ClaudeKey.current() != nil {") && flow.contains("model: ClaudeAPIClient.model"),
+    let fillFn = body(src("MedicalNoteAttestorApp.swift"), from: "func runClaudeFill(")
+    check(flow.contains("if library.claudeFill {") && flow.contains("await runClaudeFill(note: note, templates: templates)")
+          && fillFn.contains("model: ClaudeAPIClient.model"),
           "Mac fill gated by the setting (off by default) and the user's key; model = ClaudeAPIClient.model")
     check(src("LibraryStore.swift").contains("claudeFill = d.object(forKey: \"libraryClaudeFill\") as? Bool ?? false"), "setting off by default")
-    check(src("ClaudeAPIClient.swift").contains("timeout: TimeInterval = 20"), "20 s timeout")
+    check(src("ClaudeAPIClient.swift").contains("static let fillTimeout: TimeInterval = 60")
+          && src("ClaudeAPIClient.swift").contains("config.timeoutIntervalForResource = timeout"), "60 s timeout for the whole request")
 }
 
 // ── Freed F10 default-exam fallback (2026-10-12), same order as Windows ──
@@ -407,6 +414,70 @@ check(CaptureGate.decide(slot: 2, failed: false, source: .freed, hpi: "h",
       "no Freed exam, no library, no default -> silent no-op")
 check(src("HeidiSlotManager.swift").contains("CaptureGate.freedScribeExam(freedExam: freedExam, libraryInserted: !libraryExams.isEmpty, defaultExam: examSlot)"),
       "slot manager uses the fallback (stateless; adoptFreed replaces freedExam each capture)")
+
+// ── 2026-10-12: fill on every insertion (never silent), gating for every source, rebinding ──
+do {
+    // Shared notice text (same as Windows).
+    check(core.fillNotice("no-key") == "Claude fill: no API key saved \u{2014} blanks left as-is. Add your key in Settings.", "notice: no key")
+    check(core.fillNotice("key-unreadable").hasPrefix("Claude fill: your saved API key couldn\u{2019}t be read"), "notice: key unreadable")
+    check(core.fillNotice("timeout") == "Claude fill timed out after 60 s \u{2014} blanks left as-is.", "notice: timeout")
+    check(core.fillNotice("http", 401) == "Claude fill failed (HTTP 401: check your API key) \u{2014} blanks left as-is.", "notice: HTTP 401")
+    check(core.fillNotice("network") == "Claude fill failed (network error) \u{2014} blanks left as-is.", "notice: network")
+    check(core.fillNotice("malformed") == "Claude fill failed (unexpected reply) \u{2014} blanks left as-is.", "notice: malformed reply")
+    // Keychain: missing vs unreadable vs found.
+    let ks = MemorySecretStore()
+    check(ClaudeKey.lookup(in: ks) == .missing, "key lookup: none saved -> missing")
+    ks.unreadableStatus = -25293
+    check(ClaudeKey.lookup(in: ks) == .unreadable(-25293) && ClaudeKey.current(in: ks) == nil, "key lookup: Keychain error -> unreadable (not silently 'no key')")
+    ks.unreadableStatus = nil; _ = ClaudeKey.set("  test-key-not-real-2 ", in: ks)
+    check(ClaudeKey.lookup(in: ks) == .found("test-key-not-real-2"), "key lookup: found (trimmed)")
+    // Every path reaches runLibraryFlow, and runLibraryFlow always tries the fill when the setting is on.
+    let app = src("MedicalNoteAttestorApp.swift")
+    let flowFn = body(app, from: "func runLibraryFlow(captureId: UUID)")
+    check(flowFn.contains("if library.claudeFill {") && !flowFn.contains("ClaudeKey.current() != nil"), "fill not skipped silently when the key is missing")
+    let fillFn = body(app, from: "func runClaudeFill(")
+    for (needle, name) in [("case .missing: return failed(\"no-key\")", "no key"), ("case .unreadable(let status): return failed(\"key-unreadable\"", "key unreadable"),
+                           ("catch let f as ClaudeFillFailure { return failed(f.reason, f.detail) }", "API error / timeout"),
+                           ("return failed(\"malformed\")", "malformed reply"), ("FailureHUD.show(text, seconds: 6)", "visible HUD"),
+                           ("FailureHUD.show(summary, style: .info)", "summary shown"), ("FailureHUD.show(ClaudeFillProgress.started", "progress shown")] {
+        check(fillFn.contains(needle), "fill never silent: \(name)")
+    }
+    check(app.contains("exams.map { FillTemplate(slot: \"exam\", text: $0) } + dots.map { FillTemplate(slot: \"ap\", text: $0) }"),
+          "fill covers both the exam and A&P library text")
+    check(body(app, from: "func performFreedCapture()").contains("await libraryAfterCapture(captureId: captureId)")
+          && body(app, from: "func performCapture()").contains("await libraryAfterCapture(captureId: captureId)")
+          && body(app, from: "func openPickerManually()").contains("await runLibraryFlow(captureId: captureId)"),
+          "auto (Heidi, Freed), button and picker hotkey all reach runLibraryFlow")
+    // Gating: same decision for any source.
+    let heidiPlanned = "Lumbar radiculopathy, left L5.\nPatient is scheduled for right L4-L5 TFESI.\nContinue gabapentin 300 mg nightly."
+    let heidiConsider = "Lumbar radiculopathy, left L5.\nConsider TFESI if no improvement with physical therapy.\nFollow up in 6 weeks."
+    check(core.pickerOnCapture(ap: heidiPlanned) == MNACore.PickerDecision(open: true, notice: nil), "Heidi A&P planned TFESI -> picker opens")
+    check(core.pickerOnCapture(ap: heidiConsider) == MNACore.PickerDecision(open: false, notice: "No planned procedure detected \u{2014} use Open payer picker if needed."),
+          "Heidi A&P consider-only -> notice, no picker")
+    for a in ["TFESI", "ILESI", "LESI", "CESI", "TESI", "TF ESI", "IL ESI", "SIJI", "SIJ", "TPI", "GTB", "GNB", "RFA", "RFTC", "MBB", "LMBB", "CMBB", "SCS"] {
+        check(core.procedureTerms().contains(a), "procedure term: \(a)")
+    }
+    // Rebinding: Freed on F8 (Heidi moved) changes only the key; the action picks the source.
+    check(core.captureSource(forAction: "captureFreed") == "freed" && core.captureSource(forAction: "capture") == "heidi", "action -> source")
+    let suite5 = "mna-tests-rebind-\(UUID().uuidString)"
+    let d5 = UserDefaults(suiteName: suite5)!
+    let f5 = FakeRegistrar()
+    let m5 = HotkeyManager(registrar: f5, defaults: d5, validate: { core.validateHotkeys($0) })
+    var fired: [String] = []
+    m5.start(handlers: [.capture: { fired.append("heidi") }, .captureFreed: { fired.append("freed") }])
+    var rb = m5.bindings(); rb[.capture] = "Ctrl+Shift+F8"; rb[.captureFreed] = "F8"
+    check(m5.save(rb)?.ok == true, "Freed capture can be bound to F8 once Heidi capture moves")
+    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    let f8 = f5.registered.first { $0.value == "F8" }?.key
+    check(f8 == HotkeyManager.id(for: .captureFreed), "F8 is registered for the Freed action")
+    if let id = f8 { HotkeyActions.shared.actions[id]?() }
+    if let id = f5.registered.first(where: { $0.value == "Ctrl+Shift+F8" })?.key { HotkeyActions.shared.actions[id]?() }
+    check(fired == ["freed", "heidi"], "pressing F8 runs the Freed capture; the moved key runs Heidi")
+    check(app.contains(".capture:   { Task { @MainActor in await AppDelegate.shared?.performCapture() } }")
+          && app.contains(".captureFreed: { Task { @MainActor in await AppDelegate.shared?.performFreedCapture() } }"),
+          "app dispatches by action (Heidi parser vs Freed parser), never by key name")
+    UserDefaults().removePersistentDomain(forName: suite5)
+}
 
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
