@@ -431,7 +431,9 @@ window.electronAPI.onLibraryFillReview((review) => {
             const mk = document.createElement('mark');
             mk.className = m.kind;
             mk.textContent = t.text.slice(m.start, m.end);
-            mk.title = m.kind === 'unfilled' ? 'Not filled' : (m.kind === 'inferred' ? 'Inferred from: ' : 'From the note: ') + '\u201C' + m.quote + '\u201D';
+            mk.title = m.kind === 'unfilled' ? 'Not filled'
+                : ({ explicit: 'From the note: ', inferred: 'Inferred from: ', derived: 'Derived from: ' }[m.kind] || '') + '\u201C' + m.quote + '\u201D'
+                  + (m.conversion ? ' (' + m.conversion + ')' : '');
             texts.append(mk);
             pos = m.end;
         }

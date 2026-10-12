@@ -136,7 +136,8 @@ struct SlotCard: View {
 }
 
 /// Claude fill review (app only; the pasted text stays plain). Explicit fills green, inferred yellow,
-/// unfilled blanks red; hover a filled value to see its source quote; criteria warnings above.
+/// derived blue, unfilled blanks red; hover a filled value to see its source quote (and the conversion
+/// for derived values); criteria warnings above.
 struct FillReviewView: View {
     let review: FillReview
 
@@ -150,12 +151,27 @@ struct FillReviewView: View {
         for m in t.marks where m.start >= pos && m.end <= u.count {
             out += piece(pos, m.start)
             var seg = piece(m.start, m.end)
-            seg.backgroundColor = m.kind == "explicit" ? .green.opacity(0.25) : m.kind == "inferred" ? .yellow.opacity(0.35) : .red.opacity(0.2)
+            seg.backgroundColor = m.kind == "explicit" ? .green.opacity(0.25) : m.kind == "inferred" ? .yellow.opacity(0.35)
+                : m.kind == "derived" ? .blue.opacity(0.2) : .red.opacity(0.2)
             out += seg
             pos = m.end
         }
         out += piece(pos, u.count)
         return out
+    }
+
+    private func label(_ m: FillMark) -> String {
+        switch m.kind {
+        case "inferred": return "inferred: "
+        case "derived": return "derived: "
+        default: return "from note: "
+        }
+    }
+
+    private func tooltip(_ m: FillMark) -> String {
+        let quote = "\u{201C}" + (m.quote ?? "") + "\u{201D}"
+        guard let conversion = m.conversion else { return quote }
+        return quote + " (" + conversion + ")"
     }
 
     private func value(_ t: FillReview.Template, _ m: FillMark) -> String {
@@ -173,9 +189,9 @@ struct FillReviewView: View {
                 ForEach(Array(review.templates.enumerated()), id: \.offset) { _, t in
                     Text(highlighted(t)).font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
                     ForEach(Array(t.marks.filter { $0.kind != "unfilled" }.enumerated()), id: \.offset) { _, m in
-                        Text((m.kind == "inferred" ? "inferred: " : "from note: ") + value(t, m))
+                        Text(label(m) + value(t, m))
                             .font(.caption2).foregroundColor(.secondary)
-                            .help("\u{201C}" + (m.quote ?? "") + "\u{201D}")
+                            .help(tooltip(m))
                     }
                 }
             }

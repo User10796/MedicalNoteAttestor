@@ -21,54 +21,80 @@ const tool = (input) => ({ content: [{ type: 'tool_use', name: 'record_blank_val
 const val = (blank_id, value, kind, source_quote, source_section) => ({ blank_id, value, kind, source_quote, source_section });
 
 // ── recorded-response fixture ────────────────────────────────────────────────────────────────
-test('recorded response: verified values assembled; hallucinations rejected; expected text exact', () => {
+test('recorded response: clinician-style fills accepted; fabrications rejected; expected text exact', () => {
     const r = core.fillApply(note, templates, recorded);
     assert.ok(r.ok);
     assert.strictEqual(r.texts[0], read('expected_exam.txt').replace(/\n$/, ''));
     assert.strictEqual(r.texts[1], read('expected_ap.txt').replace(/\n$/, ''));
-    assert.deepStrictEqual(r.counts, { blanks: 25, filled: 18, inferred: 1, rejected: 3 });
-    assert.deepStrictEqual(r.rejectionReasons, ['quote not in note section', 'quote not in note section', 'number not in quote']);
-    assert.match(r.texts[1], /prior ESI on ___ gave ___% relief/, 'hallucinated date and percent left as blanks');
-    assert.match(r.texts[1], /past 12 months: ___\./, 'number not in its quote -> rejected');
-    assert.match(r.texts[1], /Patient has diagnosis: radiculopathy\./, 'option list dropped');
-    assert.strictEqual(r.summary, 'Filled 18 of 25 blanks (1 inferred); 1 criteria warning.');
-    assert.deepStrictEqual(r.flags.map(f => f.line), ['Patient has baseline function: ___ (scale: ___).']);
+    assert.deepStrictEqual(r.counts, { blanks: 25, filled: 19, inferred: 5, derived: 1, rejected: 2 });
+    assert.deepStrictEqual(r.rejectionReasons, ['date not supported by quote', 'percentage not in quote']);
+    assert.match(r.texts[1], /symptoms for 8 weeks/, '"two months" -> 8 weeks (derived)');
+    assert.match(r.texts[1], /x 6 weeks: physical therapy and home exercise program\./, 'PT / HEP read as written out');
+    assert.match(r.texts[1], /imaging: MRI \(MRI\/CT date 2026-08-14\)/, '"MR" and 08/14/2026 accepted');
+    assert.match(r.texts[1], /past 12 months: 0\./, '"No prior epidural steroid injections" -> 0');
+    assert.match(r.texts[1], /prior ESI on ___ gave ___% relief/, 'unsupported date and percentage left blank');
+    assert.strictEqual(r.summary, 'Filled 19 of 25 blanks (5 inferred, 1 derived); 1 criteria warning.');
+    const derived = r.marks[1].find(m => m.kind === 'derived');
+    assert.strictEqual(derived.conversion, '2 months → 8 weeks');
 });
 
-// ── validator (§3) ───────────────────────────────────────────────────────────────────────────
+// ── validator (§3, revised 2026-10-12) ───────────────────────────────────────────────────────
+const NOTE2 = {
+    hpi: 'Completed PT for two months with about half the pain gone. Denies prior ESI; no prior injections. MR of lumbar spine Aug 2026 shows L4-5 disc protrusion.',
+    exam: 'Strength 4/5 in left EHL.',
+    ap: 'Proceed with left L4-L5 TFESI.'
+};
 const one = (line) => [{ slot: 'ap', text: line }];
-function check(line, v) {
+function check(line, v, n = NOTE2) {
     const plan = core.fillPlan(one(line));
-    return core.fillValidate({ values: [v], flags: [] }, plan, note);
+    return core.fillValidate({ values: [v], flags: [] }, plan, n);
 }
-test('validator: quote not in the note -> rejected', () => {
-    const r = check('Pain ___/10.', val(1, '9', 'explicit', 'rated 9/10', 'HPI'));
-    assert.deepStrictEqual(r.rejections.map(x => x.reason), ['quote not in note section']);
+const ok = (r) => Object.values(r.accepted)[0];
+const why = (r) => r.rejections.map(x => x.reason);
+
+test('"PT" -> "physical therapy" accepted (no content-word match any more)', () => {
+    assert.strictEqual(ok(check('Conservative care: ___.', val(1, 'physical therapy', 'inferred', 'Completed PT for two months', 'HPI'))).value, 'physical therapy');
 });
-test('validator: quote in the wrong section -> rejected', () => {
-    assert.strictEqual(check('Pain ___/10.', val(1, '7', 'explicit', 'rated 7/10', 'Exam')).rejections.length, 1);
+test('"MR of lumbar spine" -> MRI (option list, synonym mapped to the option)', () => {
+    assert.strictEqual(ok(check('Imaging: ___ (MRI/CT).', val(1, 'MR', 'explicit', 'MR of lumbar spine', 'HPI'))).value, 'MRI');
+    assert.strictEqual(ok(check('Imaging: ___ (MRI/CT).', val(1, 'MRI', 'inferred', 'MR of lumbar spine', 'HPI'))).value, 'MRI');
 });
-test('validator: number in value but not in quote -> rejected', () => {
-    const r = check('Weeks: ___.', val(1, '12', 'explicit', 'Completed 6 weeks of physical therapy', 'HPI'));
-    assert.deepStrictEqual(r.rejections.map(x => x.reason), ['number not in quote']);
+test('"no prior injections" -> 0 accepted', () => {
+    assert.strictEqual(ok(check('Prior injections in 12 months: ___.', val(1, '0', 'inferred', 'no prior injections', 'HPI'))).value, '0');
 });
-test('validator: option outside the list -> rejected; option inside -> accepted', () => {
-    assert.strictEqual(check('Imaging ___ (MRI/CT).', val(1, 'X-ray', 'explicit', 'MRI lumbar spine 2026-08-14', 'A&P')).rejections[0].reason, 'value not in option list');
-    assert.ok(check('Imaging ___ (MRI/CT).', val(1, 'mri', 'explicit', 'MRI lumbar spine 2026-08-14', 'A&P')).accepted[1]);
+test('"PT for two months" -> 8 weeks, derived (with the conversion)', () => {
+    const a = ok(check('PT for ___ weeks.', val(1, '8', 'explicit', 'Completed PT for two months', 'HPI')));
+    assert.strictEqual(a.kind, 'derived');
+    assert.strictEqual(a.conversion, '2 months → 8 weeks');
 });
-test('validator: inferred date (or anything but side/level) -> rejected; inferred side/level -> accepted', () => {
-    assert.strictEqual(check('On ___.', val(1, '2026-08-14', 'inferred', 'MRI lumbar spine 2026-08-14', 'A&P')).rejections[0].reason,
-        'inferred value is not a side or level');
-    assert.strictEqual(check('For ___ weeks.', val(1, '10', 'inferred', 'for 10 weeks', 'HPI')).rejections.length, 1);
-    assert.ok(check('___ side', val(1, 'left', 'inferred', 'left lower extremity radicular pain', 'HPI')).accepted[1]);
-    assert.ok(check('at ___', val(1, 'L4-L5', 'inferred', 'disc protrusion at L4-L5', 'A&P')).accepted[1]);
-    assert.ok(check('the ___', val(1, 'L5 distribution', 'inferred', 'in the L5 distribution', 'HPI')).accepted[1]);
+test('"about half the pain gone" -> 50%, inferred', () => {
+    const a = ok(check('Patient reports ___% relief.', val(1, '50', 'inferred', 'about half the pain gone', 'HPI')));
+    assert.deepStrictEqual([a.value, a.kind], ['50', 'inferred']);
 });
-test('validator: a provider/facility name must be in the quote', () => {
-    assert.strictEqual(check('Referred by ___.', val(1, 'Dr. Patel', 'explicit', 'Completed 6 weeks of physical therapy', 'HPI')).rejections.length, 1);
+test('a date not in the note -> rejected; a normalized date in the quote -> accepted', () => {
+    assert.deepStrictEqual(why(check('MRI date ___.', val(1, '2026-03-01', 'explicit', 'MR of lumbar spine Aug 2026', 'HPI'))), ['date not supported by quote']);
+    assert.ok(ok(check('MRI date ___.', val(1, '08/2026', 'explicit', 'MR of lumbar spine Aug 2026', 'HPI'))));
 });
-test('validator: whitespace/punctuation/case-insensitive quote match', () => {
-    assert.ok(check('Pain ___/10.', val(1, '7', 'explicit', 'RATED   7/10', 'HPI')).accepted[1]);
+test('a radiologist name not in the note -> rejected', () => {
+    assert.deepStrictEqual(why(check('Read by ___ (radiologist).', val(1, 'Dr. Alan Chu', 'inferred', 'MR of lumbar spine Aug 2026', 'HPI'))), ['name not in quote']);
+});
+test('a percentage with no supporting quote -> rejected', () => {
+    assert.deepStrictEqual(why(check('Patient reports ___% relief.', val(1, '60', 'inferred', 'Denies prior ESI', 'HPI'))), ['percentage not in quote']);
+});
+test('counts and durations stay strict', () => {
+    assert.deepStrictEqual(why(check('Sessions: ___.', val(1, '3', 'inferred', 'Completed PT for two months', 'HPI'))), ['count not in quote']);
+    assert.deepStrictEqual(why(check('Symptoms for ___ weeks.', val(1, '6', 'derived', 'Denies prior ESI', 'HPI'))), ['duration not in quote']);
+    assert.deepStrictEqual(why(check('PT for ___ weeks.', val(1, '20', 'derived', 'Completed PT for two months', 'HPI'))), ['duration not supported by quote']);
+    assert.deepStrictEqual(why(check('Score: ___.', val(1, 'ODI 40', 'inferred', 'Completed PT for two months', 'HPI'))), ['number not in quote']);
+    assert.ok(ok(check('Strength ___ in left EHL.', val(1, '4/5', 'explicit', 'Strength 4/5 in left EHL', 'Exam'))));
+});
+test('quote must exist in the stated section', () => {
+    assert.deepStrictEqual(why(check('Pain ___/10.', val(1, '9', 'explicit', 'rated 9/10', 'HPI'))), ['quote not in note section']);
+    assert.deepStrictEqual(why(check('Side ___.', val(1, 'left', 'inferred', 'Proceed with left L4-L5 TFESI', 'HPI'))), ['quote not in note section'], 'wrong section');
+    assert.ok(ok(check('Side ___.', val(1, 'left', 'inferred', 'PROCEED   with left L4-L5 TFESI', 'A&P'))), 'case/whitespace-insensitive');
+});
+test('option outside the list -> rejected', () => {
+    assert.deepStrictEqual(why(check('Imaging: ___ (MRI/CT).', val(1, 'X-ray', 'explicit', 'MR of lumbar spine', 'HPI'))), ['value not in option list']);
 });
 test('malformed response -> nothing filled, notice', () => {
     for (const bad of ['not json', {}, { content: [] }, tool({ values: 'x' }), tool({ values: [{ blank_id: '1', value: 2 }] })]) {
@@ -142,7 +168,7 @@ test('on + key -> one POST to the Messages API with the request body; results fi
     const filled = r.results.find(x => x.insert);
     assert.strictEqual(filled.dotphrase, read('expected_ap.txt').replace(/\n$/, ''));
     assert.strictEqual(filled.examText, read('expected_exam.txt').replace(/\n$/, ''));
-    assert.match(r.review.summary, /^Filled 18 of 25 blanks/);
+    assert.match(r.review.summary, /^Filled 19 of 25 blanks/);
 });
 test('API error, timeout or malformed reply -> blanks left as-is, notice', async () => {
     for (const opts of [{ reply: response(500, { json: {} }) }, { reply: new Error('offline') }, { delay: 500 }, { reply: response(200, { json: { content: [] } }) }]) {
@@ -159,7 +185,7 @@ test('logs counts and reasons only (never note text or values)', async () => {
     const f = createClaudeFiller({ fetchImpl, getKey: () => 'k', isEnabled: () => true, model: 'm', log: (m) => lines.push(m) });
     await f.fill({ note, results: results() });
     assert.strictEqual(lines.length, 1);
-    assert.match(lines[0], /^claude fill: 18\/25 filled, 3 rejected/);
+    assert.match(lines[0], /^claude fill: 19\/25 filled, 2 rejected/);
     for (const s of ['radiculopathy', 'L4-L5', '2026', 'paracentral', 'left']) assert.ok(!lines[0].includes(s), s);
 });
 
@@ -179,7 +205,7 @@ test('capture flow: Claude fill feeds the composed F10/F11 text; off leaves it e
     const { f } = filler();
     const on = mk(f.fill); const r = await on.flow.onCapture(cap);
     assert.ok(on.store.read('ap').text.includes('Patient has diagnosis: radiculopathy.'));
-    assert.match(r.review.summary, /Filled 18 of 25/);
+    assert.match(r.review.summary, /Filled 19 of 25/);
 });
 
 test('main.js wiring: setting off by default, user key only, CLAUDE_MODEL, captured note only, review never pasted', () => {

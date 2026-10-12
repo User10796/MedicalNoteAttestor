@@ -1,7 +1,7 @@
 Subjective
 
 History of Present Illness (HPI):
-- 58-year-old male with left lower extremity radicular pain in the L5 distribution for 10 weeks, rated 7/10, limiting walking and sleep. Completed 6 weeks of physical therapy and home exercise program with minimal relief. Trial of gabapentin with partial relief. No prior epidural steroid injections.
+- 58-year-old male with left lower extremity radicular pain in the L5 distribution for two months, rated 7/10, limiting walking and sleep. Completed 6 weeks of PT and HEP with minimal relief. Trial of gabapentin with partial relief. No prior epidural steroid injections.
 
 Past medical history:
 - Hyperlipidemia.
@@ -25,9 +25,9 @@ Assessment & Plan
 
 Assessment and Plan:
 1. Lumbar radiculopathy, left L5
-   - MRI lumbar spine 2026-08-14 shows left paracentral disc protrusion at L4-L5 contacting the traversing L5 nerve root
+   - MR lumbar spine 08/14/2026 shows left paracentral disc protrusion at L4-L5 contacting the traversing L5 nerve root
    - Proceed with left L4-L5 transforaminal epidural steroid injection
-   - Continue home exercise program
+   - Continue HEP
 
 Follow-up:
 - Return to clinic two weeks after the injection

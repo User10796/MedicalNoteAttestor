@@ -368,17 +368,23 @@ do {
     func trimNL(_ s: String) -> String { s.hasSuffix("\n") ? String(s.dropLast()) : s }
     check(r?.ok == true && r?.texts?[0] == trimNL(cf("expected_exam.txt")) && r?.texts?[1] == trimNL(cf("expected_ap.txt")),
           "recorded response -> same assembled text as Windows (shared expected files)")
-    check(r?.counts == FillCounts(blanks: 25, filled: 18, inferred: 1, rejected: 3) && r?.summary == "Filled 18 of 25 blanks (1 inferred); 1 criteria warning.",
+    check(r?.counts == FillCounts(blanks: 25, filled: 19, inferred: 5, derived: 1, rejected: 2) && r?.summary == "Filled 19 of 25 blanks (5 inferred, 1 derived); 1 criteria warning.",
           "counts and summary match")
     check(core.fillApply(note: note, templates: templates, response: "{\"content\": []}")?.ok == false, "malformed reply -> nothing filled")
     let v1 = core.fillValidateCount(line: "Pain ___/10.", value: ["blank_id": 1, "value": "9", "kind": "explicit", "source_quote": "rated 9/10", "source_section": "HPI"], note: note)
     check(v1.accepted == 0 && v1.reasons == ["quote not in note section"], "validator: quote not in note -> rejected")
-    let v2 = core.fillValidateCount(line: "Weeks ___.", value: ["blank_id": 1, "value": "12", "kind": "explicit", "source_quote": "Completed 6 weeks of physical therapy", "source_section": "HPI"], note: note)
-    check(v2.reasons == ["number not in quote"], "validator: number not in quote -> rejected")
-    let v3 = core.fillValidateCount(line: "Imaging ___ (MRI/CT).", value: ["blank_id": 1, "value": "X-ray", "kind": "explicit", "source_quote": "MRI lumbar spine 2026-08-14", "source_section": "A&P"], note: note)
+    let v2 = core.fillValidateCount(line: "Weeks ___.", value: ["blank_id": 1, "value": "12", "kind": "explicit", "source_quote": "Completed 6 weeks of PT and HEP", "source_section": "HPI"], note: note)
+    check(v2.reasons == ["count not in quote"], "validator: count not in quote -> rejected")
+    let v5 = core.fillValidateCount(line: "PT for ___ weeks.", value: ["blank_id": 1, "value": "8", "kind": "explicit", "source_quote": "in the L5 distribution for two months", "source_section": "HPI"], note: note)
+    check(v5.accepted == 1, "validator: two months -> 8 weeks accepted (derived)")
+    let v6 = core.fillValidateCount(line: "Prior injections: ___.", value: ["blank_id": 1, "value": "0", "kind": "inferred", "source_quote": "No prior epidural steroid injections", "source_section": "HPI"], note: note)
+    check(v6.accepted == 1, "validator: no prior injections -> 0 accepted")
+    let v3 = core.fillValidateCount(line: "Imaging ___ (MRI/CT).", value: ["blank_id": 1, "value": "X-ray", "kind": "explicit", "source_quote": "MR lumbar spine 08/14/2026", "source_section": "A&P"], note: note)
     check(v3.reasons == ["value not in option list"], "validator: option outside list -> rejected")
-    let v4 = core.fillValidateCount(line: "On ___.", value: ["blank_id": 1, "value": "2026-08-14", "kind": "inferred", "source_quote": "MRI lumbar spine 2026-08-14", "source_section": "A&P"], note: note)
-    check(v4.reasons == ["inferred value is not a side or level"], "validator: inferred date -> rejected")
+    let v4 = core.fillValidateCount(line: "On ___.", value: ["blank_id": 1, "value": "2026-05-02", "kind": "inferred", "source_quote": "MR lumbar spine 08/14/2026", "source_section": "A&P"], note: note)
+    check(v4.reasons == ["date not supported by quote"], "validator: date not in quote -> rejected")
+    let v7 = core.fillValidateCount(line: "Imaging ___ (MRI/CT).", value: ["blank_id": 1, "value": "MR", "kind": "explicit", "source_quote": "MR lumbar spine 08/14/2026", "source_section": "A&P"], note: note)
+    check(v7.accepted == 1, "validator: MR -> MRI option synonym accepted")
     if let body = core.fillRequestBody(note: note, templates: templates, model: "claude-sonnet-4-6"),
        let o = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
         check(o["model"] as? String == "claude-sonnet-4-6" && (o["tool_choice"] as? [String: String])?["name"] == "record_blank_values",

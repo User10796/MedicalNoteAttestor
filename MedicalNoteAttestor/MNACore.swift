@@ -59,9 +59,9 @@ struct RegistryProcedure: Codable, Identifiable {
 
 // Claude fill of library blanks (shared core: lib/mna-core.js fill*).
 struct FillTemplate: Codable { var slot: String; var text: String }
-struct FillMark: Codable, Equatable { var start: Int; var end: Int; var kind: String; var quote: String? }
+struct FillMark: Codable, Equatable { var start: Int; var end: Int; var kind: String; var quote: String?; var conversion: String? }
 struct FillFlag: Codable, Equatable { var line_id: Int; var message: String; var line: String? }
-struct FillCounts: Codable, Equatable { var blanks: Int; var filled: Int; var inferred: Int; var rejected: Int }
+struct FillCounts: Codable, Equatable { var blanks: Int; var filled: Int; var inferred: Int; var derived: Int; var rejected: Int }
 struct FillResult: Codable {
     var ok: Bool
     var texts: [String]?
@@ -181,7 +181,7 @@ final class MNACore {
         return call("MNACore.fillApply", [note, t, response], as: FillResult.self)
     }
     func fillValidateCount(line: String, value: [String: Any], note: [String: String]) -> (accepted: Int, reasons: [String]) {
-        struct V: Codable { struct R: Codable { var reason: String }; var accepted: [String: [String: String]]; var rejections: [R] }
+        struct V: Codable { struct R: Codable { var reason: String }; var accepted: [String: [String: String?]]; var rejections: [R] }
         guard let d = callJSON("(function (line, v, note) { var plan = MNACore.fillPlan([{ slot: 'ap', text: line }]); " +
                                "return MNACore.fillValidate({ values: [v], flags: [] }, plan, note); })", [line, value, note]),
               let v = try? JSONDecoder().decode(V.self, from: d) else { return (0, ["error"]) }
