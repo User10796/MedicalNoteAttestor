@@ -1,0 +1,11 @@
+Patient has diagnosis: radiculopathy.
+Patient has concordant imaging: MRI (MRI/CT date 2026-08-14) showing left paracentral disc protrusion at L4-L5.
+Patient reports symptoms for 10 weeks (>=4 weeks), greatly impacting quality of life/function.
+Patient reports baseline pain of 7/10 (NRS).
+Patient has baseline function: ___ (scale: ___).
+Patient has failed or not tolerated conservative care x 6 weeks: physical therapy and home exercise program.
+Patient has current participation in home exercise/rehab program: home exercise program.
+Patient is scheduled for TFESI at L4-L5 (max 2 levels, left side), fluoroscopy with contrast.
+Patient reports (for repeat ESI) prior ESI on ___ gave ___% relief (or ___% functional improvement, same scale) for ___ months.
+Patient has ESI sessions this region in past 12 months: ___.
+Patient has no contraindication (infection, compressive cord lesion, cancer risk).

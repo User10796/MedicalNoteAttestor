@@ -72,6 +72,15 @@ test('static guard: new library/detection modules make no other network calls', 
     const NET = /\bfetch\s*\(|require\(['"](https?|net|dgram|tls|electron)['"]\)|XMLHttpRequest|WebSocket/;
     for (const f of fs.readdirSync(lib)) {
         const src = fs.readFileSync(path.join(lib, f), 'utf8');
+        if (f === 'claude-fill-client.js') {
+            // Opt-in Claude fill (SPEC_library_claude_fill): one POST to the Messages API, only when the
+            // setting is on and the user entered a key. Behavior is covered by test/claude-fill.test.js.
+            assert.match(src, /const API_URL = 'https:\/\/api\.anthropic\.com\/v1\/messages';/);
+            assert.ok(!/https?:\/\/(?!api\.anthropic\.com)/.test(src.replace(/^\s*\/\/.*$/gm, '')), 'no other host');
+            assert.match(src, /if \(!isEnabled\(\)\) return null;\s*\n\s*const key = getKey\(\);\s*\n\s*if \(!key\) return null;/);
+            assert.ok(!/require\(['"](https?|net|electron)['"]\)/.test(src));
+            continue;
+        }
         if (f === 'library-client.js') {
             // Only the injected fetchImpl, only GET.
             assert.ok(!/require\(['"](https?|net)['"]\)/.test(src));

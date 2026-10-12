@@ -102,6 +102,23 @@ class ClaudeAPIClient {
         return baseSystemPrompt + "\n\nADDITIONAL INSTRUCTIONS:\n" + customInstructions
     }
 
+    /// POST a prepared Messages API body (Claude fill). User key only; 20 s timeout. Returns the raw JSON.
+    func sendMessages(body: Data, timeout: TimeInterval = 20) async throws -> String {
+        let apiKey = try await getAPIKey()
+        var request = URLRequest(url: apiURL)
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200, let text = String(data: data, encoding: .utf8) else {
+            throw ClaudeAPIError.invalidResponse
+        }
+        return text
+    }
+
     @MainActor
     func formatMedicalNote(_ text: String) async throws -> String {
         let apiKey = try await getAPIKey()

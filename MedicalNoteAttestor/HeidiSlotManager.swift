@@ -1,6 +1,15 @@
 import Foundation
 import AppKit
 
+/// What the Claude fill did, for the review block in the main window.
+struct FillReview: Equatable {
+    struct Template: Equatable { var slot: String; var text: String; var marks: [FillMark] }
+    var notice: String?
+    var summary: String?
+    var flags: [FillFlag] = []
+    var templates: [Template] = []
+}
+
 @MainActor
 class HeidiSlotManager: ObservableObject {
     static let shared = HeidiSlotManager()
@@ -25,6 +34,8 @@ class HeidiSlotManager: ObservableObject {
     @Published private(set) var libraryExams: [String] = []
     @Published private(set) var libraryDots: [String] = []
     private var libraryPlanLine: Int? = nil
+    /// Claude fill review for the current capture (app only; never pasted).
+    @Published private(set) var fillReview: FillReview? = nil
     var libraryAdded: Bool { !libraryExams.isEmpty || !libraryDots.isEmpty }
 
     private let examDotPhraseKey = "examDotPhrase"
@@ -88,14 +99,16 @@ class HeidiSlotManager: ObservableObject {
         FailureHUD.show(CaptureGate.failureMessage)
     }
 
-    func setLibrarySelections(captureId id: UUID, exams: [String], dotphrases: [String], planLine: Int?) {
+    func setLibrarySelections(captureId id: UUID, exams: [String], dotphrases: [String], planLine: Int?, review: FillReview? = nil) {
         guard id == captureId else { return }   // stale picker answer: ignore
         libraryExams = exams
         libraryDots = dotphrases
         libraryPlanLine = planLine
+        fillReview = review
     }
 
     private func clearLibrary() {
+        fillReview = nil
         libraryExams = []
         libraryDots = []
         libraryPlanLine = nil

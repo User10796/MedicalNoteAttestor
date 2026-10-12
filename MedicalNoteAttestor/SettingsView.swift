@@ -290,6 +290,12 @@ struct LibrarySettingsTab: View {
         Form {
             Section("Insertion") {
                 Toggle("Insert library exam text (F10) and dot-phrases (F11) after capture", isOn: $library.enabled)
+                Toggle("Fill library blanks with Claude", isOn: $library.claudeFill)
+                Text(library.claudeFill && !SettingsManager.shared.hasClaudeAPIKey
+                     ? "On, but no Claude API key is saved (Settings \u{2192} Claude API), so nothing is sent and blanks stay as-is."
+                     : "Off by default. When on, the captured HPI, exam and A&P and the inserted template text are sent to Anthropic's Claude with your API key. Claude only proposes values with quotes from the note; MNA checks each one and leaves anything it can't verify as ___.")
+                    .font(.caption)
+                    .foregroundColor(library.claudeFill && !SettingsManager.shared.hasClaudeAPIKey ? .red : .secondary)
                 Picker("Dot-phrase position in the A&P", selection: $library.insertion) {
                     Text("End of A&P (default)").tag("end")
                     Text("Right after the procedure plan line").tag("after_plan_line")

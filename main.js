@@ -9,6 +9,7 @@ const { createCaptureFlow, createComposedStore, createCaptureTracker, CAPTURE_FA
 const { createFreedCapture, encodeFreedResult } = require('./lib/freed-capture');
 const profiles = require('./lib/source-profiles');
 const { createSecretStore } = require('./lib/secrets');
+const { createClaudeFiller } = require('./lib/claude-fill-client');
 
 // Anthropic model used for all Claude API calls.
 // The previous Sonnet 4 model (dated 20250514) was retired from the API on 2026-06-15;
@@ -147,6 +148,7 @@ const DEFAULTS = {
     examDotPhrase: '',
     libraryEnabled: true,
     libraryInsertion: 'end',     // 'end' | 'after_plan_line'
+    libraryClaudeFill: false,    // opt-in: fill library blanks with Claude (needs the user's key)
     libraryTokenEnc: '',         // safeStorage-encrypted (DPAPI on Windows); never plaintext
     payerRecents: [],
     claudeApiKeyEnc: '',         // safeStorage-encrypted (DPAPI on Windows); never plaintext
@@ -285,6 +287,15 @@ function libraryUiState() {
              composed: !!(lastComposed && lastComposed.captureTs === currentCaptureTs) };
 }
 
+// Opt-in Claude fill of inserted library blanks (SPEC_library_claude_fill). Off by default; user key only.
+const claudeFiller = createClaudeFiller({
+    fetchImpl: (url, opts) => net.fetch(url, opts),
+    getKey: () => getClaudeKey(),
+    isEnabled: () => !!store.get('libraryClaudeFill'),
+    model: CLAUDE_MODEL,
+    log: (m) => console.log(m)          // counts and reasons only
+});
+
 const captureFlow = createCaptureFlow({
     getBundle: () => getLibraryClient().bundle(),
     isEnabled: () => !!store.get('libraryEnabled'),
@@ -296,19 +307,27 @@ const captureFlow = createCaptureFlow({
         clear: () => { if (process.platform === 'win32') composedStore().clear(); },
         write: (ts, out) => { if (process.platform === 'win32') composedStore().write(ts, out); }
     },
-    onComposed: (c) => { lastComposed = c; sendSlotState(); }
+    fillBlanks: (req) => claudeFiller.fill(req),
+    onComposed: (c, out, review) => {
+        lastComposed = c;
+        sendSlotState();
+        if (mainWindow) mainWindow.webContents.send('library-fill-review', review || null);
+    }
 });
 
 // New capture: forget the previous capture's composed text before anything can paste it.
 function beginCapture(captureTs) {
     currentCaptureTs = captureTs;
     lastComposed = null;
+    if (mainWindow) mainWindow.webContents.send('library-fill-review', null);
     captureFlow.reset();
 }
 
 function startLibraryFlow(source, captureTs) {
     const exam = source === 'freed' ? freedExam : getExamSlot();
-    captureFlow.onCapture({ source, captureTs, ap: slots.ap, exam })
+    // Claude fill gets the CAPTURED note only: HPI, exam (Freed's; Heidi has no captured exam) and A&P.
+    const fillExam = source === 'freed' ? freedExam : '';
+    captureFlow.onCapture({ source, captureTs, ap: slots.ap, exam, hpi: slots.hpi || '', fillExam })
         .then(r => { if (r && r.skipped && r.reason !== 'superseded') sendSlotState(); })
         .catch(e => console.error('library flow failed:', e.message));
 }
@@ -960,6 +979,7 @@ function libraryStatusForUi() {
     return { ...getLibraryClient().status(), hasToken: !!store.get('libraryTokenEnc'),
              encryptionAvailable: safeStorage.isEncryptionAvailable(),
              enabled: !!store.get('libraryEnabled'), insertion: store.get('libraryInsertion') || 'end',
+             claudeFill: !!store.get('libraryClaudeFill'), hasClaudeKey: secrets.has('claudeApiKey'),
              snapshotTag: getLibraryClient().snapshotTag() };
 }
 ipcMain.handle('library-status', () => libraryStatusForUi());
@@ -975,6 +995,7 @@ ipcMain.handle('library-set-token', async (e, token) => {
 ipcMain.handle('library-set-options', (e, o) => {
     if (o && typeof o.enabled === 'boolean') store.set('libraryEnabled', o.enabled);
     if (o && (o.insertion === 'end' || o.insertion === 'after_plan_line')) store.set('libraryInsertion', o.insertion);
+    if (o && typeof o.claudeFill === 'boolean') store.set('libraryClaudeFill', o.claudeFill);
     sendSlotState();
     return libraryStatusForUi();
 });

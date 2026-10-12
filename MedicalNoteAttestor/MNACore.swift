@@ -57,6 +57,22 @@ struct RegistryProcedure: Codable, Identifiable {
     var id: String { procedure_id }
 }
 
+// Claude fill of library blanks (shared core: lib/mna-core.js fill*).
+struct FillTemplate: Codable { var slot: String; var text: String }
+struct FillMark: Codable, Equatable { var start: Int; var end: Int; var kind: String; var quote: String? }
+struct FillFlag: Codable, Equatable { var line_id: Int; var message: String; var line: String? }
+struct FillCounts: Codable, Equatable { var blanks: Int; var filled: Int; var inferred: Int; var rejected: Int }
+struct FillResult: Codable {
+    var ok: Bool
+    var texts: [String]?
+    var marks: [[FillMark]]?
+    var flags: [FillFlag]?
+    var summary: String?
+    var counts: FillCounts?
+    var rejectionReasons: [String]?
+    var notice: String?
+}
+
 struct HotkeyValidation: Codable {
     struct Message: Codable { var action: String; var message: String }
     var ok: Bool
@@ -90,6 +106,7 @@ final class MNACore {
               detect: function (ap) { return MNACore.detectProcedures(ap, __bundle); },
               freedPlanned: function (ap) { return MNACore.freedProcedurePlanned(ap, __bundle); },
               linePlanned: function (line) { return MNACore.procedureLineIsPlanned(line, __bundle); },
+              fillBody: function (note, templates, model) { return MNACore.fillRequest(note, templates, model).body; },
               resolve: function (payer, items) { return MNACore.resolveSelections(__bundle, payer, items); },
               search: function (q, recents) { return MNACore.searchPayers(__bundle, q, recents); },
               procedures: function () { return ((__bundle && __bundle.registries && __bundle.registries.procedures) || [])
@@ -152,6 +169,24 @@ final class MNACore {
         return call("MNACore.composeAP", [ap, dotphrases, opts], as: String.self) ?? ap
     }
     func cernerSafe(_ s: String) -> String { call("MNACore.cernerSafe", [s], as: String.self) ?? s }
+
+    // MARK: Claude fill (prompt, validation and assembly all live in the shared core)
+
+    func fillRequestBody(note: [String: String], templates: [FillTemplate], model: String) -> Data? {
+        guard let t = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(templates)) else { return nil }
+        return callJSON("__S.fillBody", [note, t, model])
+    }
+    func fillApply(note: [String: String], templates: [FillTemplate], response: String) -> FillResult? {
+        guard let t = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(templates)) else { return nil }
+        return call("MNACore.fillApply", [note, t, response], as: FillResult.self)
+    }
+    func fillValidateCount(line: String, value: [String: Any], note: [String: String]) -> (accepted: Int, reasons: [String]) {
+        struct V: Codable { struct R: Codable { var reason: String }; var accepted: [String: [String: String]]; var rejections: [R] }
+        guard let d = callJSON("(function (line, v, note) { var plan = MNACore.fillPlan([{ slot: 'ap', text: line }]); " +
+                               "return MNACore.fillValidate({ values: [v], flags: [] }, plan, note); })", [line, value, note]),
+              let v = try? JSONDecoder().decode(V.self, from: d) else { return (0, ["error"]) }
+        return (v.accepted.count, v.rejections.map(\.reason))
+    }
 
     // MARK: picker
 

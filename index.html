@@ -417,6 +417,19 @@
                     onclick="openPickerManually()">Open payer picker</button>
         </div>
 
+        <!-- Claude fill review (app only; never pasted) -->
+        <div id="fill-review" style="display:none; margin:6px 0; padding:6px 8px; border:1px solid #e1e4e8; border-radius:6px; background:#fff; font-size:11px;">
+            <div id="fill-summary" style="font-weight:600; margin-bottom:4px;"></div>
+            <div id="fill-flags"></div>
+            <div id="fill-texts" style="white-space:pre-wrap; font-family:Consolas,Menlo,monospace; max-height:180px; overflow-y:auto;"></div>
+        </div>
+        <style>
+            #fill-texts mark.explicit { background:#dcffe4; }
+            #fill-texts mark.inferred { background:#fff5b1; }
+            #fill-texts mark.unfilled { background:#ffdce0; }
+            #fill-flags .flag { color:#b08800; margin-bottom:2px; }
+        </style>
+
         <div class="paste-legend" id="paste-legend">
             F9 HPI &nbsp;&middot;&nbsp; F10 Exam &nbsp;&middot;&nbsp; F11 A/P
         </div>
