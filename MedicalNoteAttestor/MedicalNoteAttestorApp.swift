@@ -32,6 +32,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var eventHandler: EventHandlerRef?
     let hotkeys = HotkeyManager(registrar: CarbonHotkeyRegistrar())
     let heidiCopyService = HeidiCopyService()
+    let claudeClient = ClaudeAPIClient()
     private var sessionLastPayer: String?   // hint only; never pre-selected
     private var settingsWindow: NSWindow?
 
@@ -217,9 +218,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         library.recents = core.recordRecentPayer(recents: library.recents, payerId: answer.payerId)
         let results = core.resolve(payerId: answer.payerId, rows: answer.rows).filter { $0.insert }
         let planLine = answer.rows.first(where: { $0.checked && $0.line != nil })?.line
-        slotManager.setLibrarySelections(captureId: captureId,
-                                         exams: results.map(\.examText).filter { !$0.isEmpty },
-                                         dotphrases: results.map(\.dotphrase).filter { !$0.isEmpty },
-                                         planLine: planLine)
+        var exams = results.map(\.examText).filter { !$0.isEmpty }
+        var dots = results.map(\.dotphrase).filter { !$0.isEmpty }
+        var review: FillReview?
+        // Opt-in Claude fill (off by default; user key only). Claude proposes values with quotes;
+        // the shared core verifies them and does the substitution. Failure leaves every blank as-is.
+        if library.claudeFill, ClaudeKey.current() != nil {
+            let templates = exams.map { FillTemplate(slot: "exam", text: $0) } + dots.map { FillTemplate(slot: "ap", text: $0) }
+            if templates.contains(where: { $0.text.contains("___") }) {
+                let note = ["hpi": slotManager.hpiSlot ?? "",
+                            "exam": slotManager.activeSource == .freed ? slotManager.freedExam : "",   // Heidi has no captured exam
+                            "ap": ap]
+                review = FillReview(notice: "Claude fill unavailable \u{2014} blanks left as-is.")
+                if let body = core.fillRequestBody(note: note, templates: templates, model: ClaudeAPIClient.model),
+                   let reply = try? await claudeClient.sendMessages(body: body),
+                   let r = core.fillApply(note: note, templates: templates, response: reply), r.ok, let texts = r.texts {
+                    exams = Array(texts.prefix(exams.count))
+                    dots = Array(texts.suffix(dots.count))
+                    review = FillReview(notice: nil, summary: r.summary, flags: r.flags ?? [],
+                                        templates: templates.indices.map { FillReview.Template(slot: templates[$0].slot, text: texts[$0], marks: r.marks?[$0] ?? []) })
+                    let c = r.counts
+                    logger.info("claude fill: \(c?.filled ?? 0, privacy: .public)/\(c?.blanks ?? 0, privacy: .public) filled, \(c?.rejected ?? 0, privacy: .public) rejected (\((r.rejectionReasons ?? []).joined(separator: "; "), privacy: .public))")
+                } else {
+                    logger.info("claude fill: unavailable")
+                }
+                guard slotManager.captureId == captureId else { return }  // a newer capture arrived meanwhile
+            }
+        }
+        slotManager.setLibrarySelections(captureId: captureId, exams: exams, dotphrases: dots, planLine: planLine, review: review)
     }
 }

@@ -354,5 +354,48 @@ check(smSrc.contains("ClaudeKey.migrate(defaults: .standard)") && !smSrc.contain
 check(body(appSrc, from: "func performCapture()").contains("ActionItemsPolicy.enabled(source: .heidi, heidiSetting: SettingsManager.shared.heidiActionItems)"),
       "Heidi action items gated by the setting")
 
+// ── Claude fill of library blanks (SPEC_library_claude_fill), shared fixtures via JavaScriptCore ──
+do {
+    let cfDir = root.appendingPathComponent("test/fixtures/claude-fill")
+    func cf(_ f: String) -> String { (try! String(contentsOf: cfDir.appendingPathComponent(f), encoding: .utf8)).replacingOccurrences(of: "\r\n", with: "\n") }
+    let noteSlots = okSlots(FreedCapture().process(raw: cf("freed_tfesi_note.txt")))!
+    let note = ["hpi": noteSlots.hpi, "exam": noteSlots.exam, "ap": noteSlots.ap]
+    let lib = json("test/fixtures/library.fixture.json") as! [String: Any]
+    let tf = (lib["entries"] as! [[String: Any]]).first { $0["key"] as? String == "medicare_ab_ga/lumbar_tfesi" }!
+    let templates = [FillTemplate(slot: "exam", text: (tf["exam_text"] as! [String: String])["left"]!),
+                     FillTemplate(slot: "ap", text: tf["documentation_dotphrase"] as! String)]
+    let r = core.fillApply(note: note, templates: templates, response: cf("recorded_response_tfesi.json"))
+    func trimNL(_ s: String) -> String { s.hasSuffix("\n") ? String(s.dropLast()) : s }
+    check(r?.ok == true && r?.texts?[0] == trimNL(cf("expected_exam.txt")) && r?.texts?[1] == trimNL(cf("expected_ap.txt")),
+          "recorded response -> same assembled text as Windows (shared expected files)")
+    check(r?.counts == FillCounts(blanks: 25, filled: 19, inferred: 5, derived: 1, rejected: 2) && r?.summary == "Filled 19 of 25 blanks (5 inferred, 1 derived); 1 criteria warning.",
+          "counts and summary match")
+    check(core.fillApply(note: note, templates: templates, response: "{\"content\": []}")?.ok == false, "malformed reply -> nothing filled")
+    let v1 = core.fillValidateCount(line: "Pain ___/10.", value: ["blank_id": 1, "value": "9", "kind": "explicit", "source_quote": "rated 9/10", "source_section": "HPI"], note: note)
+    check(v1.accepted == 0 && v1.reasons == ["quote not in note section"], "validator: quote not in note -> rejected")
+    let v2 = core.fillValidateCount(line: "Weeks ___.", value: ["blank_id": 1, "value": "12", "kind": "explicit", "source_quote": "Completed 6 weeks of PT and HEP", "source_section": "HPI"], note: note)
+    check(v2.reasons == ["count not in quote"], "validator: count not in quote -> rejected")
+    let v5 = core.fillValidateCount(line: "PT for ___ weeks.", value: ["blank_id": 1, "value": "8", "kind": "explicit", "source_quote": "in the L5 distribution for two months", "source_section": "HPI"], note: note)
+    check(v5.accepted == 1, "validator: two months -> 8 weeks accepted (derived)")
+    let v6 = core.fillValidateCount(line: "Prior injections: ___.", value: ["blank_id": 1, "value": "0", "kind": "inferred", "source_quote": "No prior epidural steroid injections", "source_section": "HPI"], note: note)
+    check(v6.accepted == 1, "validator: no prior injections -> 0 accepted")
+    let v3 = core.fillValidateCount(line: "Imaging ___ (MRI/CT).", value: ["blank_id": 1, "value": "X-ray", "kind": "explicit", "source_quote": "MR lumbar spine 08/14/2026", "source_section": "A&P"], note: note)
+    check(v3.reasons == ["value not in option list"], "validator: option outside list -> rejected")
+    let v4 = core.fillValidateCount(line: "On ___.", value: ["blank_id": 1, "value": "2026-05-02", "kind": "inferred", "source_quote": "MR lumbar spine 08/14/2026", "source_section": "A&P"], note: note)
+    check(v4.reasons == ["date not supported by quote"], "validator: date not in quote -> rejected")
+    let v7 = core.fillValidateCount(line: "Imaging ___ (MRI/CT).", value: ["blank_id": 1, "value": "MR", "kind": "explicit", "source_quote": "MR lumbar spine 08/14/2026", "source_section": "A&P"], note: note)
+    check(v7.accepted == 1, "validator: MR -> MRI option synonym accepted")
+    if let body = core.fillRequestBody(note: note, templates: templates, model: "claude-sonnet-4-6"),
+       let o = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
+        check(o["model"] as? String == "claude-sonnet-4-6" && (o["tool_choice"] as? [String: String])?["name"] == "record_blank_values",
+              "request: model + forced tool use (same body as Windows)")
+    } else { check(false, "request body builds") }
+    let flow = body(src("MedicalNoteAttestorApp.swift"), from: "func runLibraryFlow(")
+    check(flow.contains("if library.claudeFill, ClaudeKey.current() != nil {") && flow.contains("model: ClaudeAPIClient.model"),
+          "Mac fill gated by the setting (off by default) and the user's key; model = ClaudeAPIClient.model")
+    check(src("LibraryStore.swift").contains("claudeFill = d.object(forKey: \"libraryClaudeFill\") as? Bool ?? false"), "setting off by default")
+    check(src("ClaudeAPIClient.swift").contains("timeout: TimeInterval = 20"), "20 s timeout")
+}
+
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

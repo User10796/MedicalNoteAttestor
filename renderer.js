@@ -408,6 +408,39 @@ window.electronAPI.onSlotEmpty((slotName) => {
     setHeidiStatus(`\u26A0\uFE0F ${labels[slotName]||slotName} slot is empty`, 'error');
 });
 
+// Claude fill review: highlights, source quotes on hover, criteria warnings. Shown in the app only.
+window.electronAPI.onLibraryFillReview((review) => {
+    const box = document.getElementById('fill-review');
+    if (!box) return;
+    const summary = document.getElementById('fill-summary'), flags = document.getElementById('fill-flags'), texts = document.getElementById('fill-texts');
+    flags.textContent = ''; texts.textContent = '';
+    if (!review) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    if (review.notice) { summary.textContent = '\u26A0\uFE0F ' + review.notice; return; }
+    summary.textContent = review.summary;
+    (review.flags || []).forEach(f => {
+        const d = document.createElement('div'); d.className = 'flag';
+        d.textContent = '\u26A0\uFE0F ' + f.message + (f.line ? ' \u2014 ' + f.line : '');
+        flags.append(d);
+    });
+    (review.templates || []).forEach((t, i) => {
+        if (i) texts.append(document.createElement('hr'));
+        let pos = 0;
+        for (const m of t.marks) {
+            texts.append(document.createTextNode(t.text.slice(pos, m.start)));
+            const mk = document.createElement('mark');
+            mk.className = m.kind;
+            mk.textContent = t.text.slice(m.start, m.end);
+            mk.title = m.kind === 'unfilled' ? 'Not filled'
+                : ({ explicit: 'From the note: ', inferred: 'Inferred from: ', derived: 'Derived from: ' }[m.kind] || '') + '\u201C' + m.quote + '\u201D'
+                  + (m.conversion ? ' (' + m.conversion + ')' : '');
+            texts.append(mk);
+            pos = m.end;
+        }
+        texts.append(document.createTextNode(t.text.slice(pos)));
+    });
+});
+
 // ── Collapse/Expand ───────────────────────────────────────────────────────────
 
 const collapseBtn = document.getElementById('collapse-btn');

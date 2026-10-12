@@ -61,6 +61,8 @@ struct HeidiTabView: View {
                     .background(Color.red.opacity(0.85)).cornerRadius(4)
             }
 
+            if let review = slotManager.fillReview { FillReviewView(review: review) }
+
             if slotManager.libraryAdded {
                 Text("Library text added to Exam / A&P")
                     .font(.caption2).foregroundColor(.green)
@@ -130,5 +132,70 @@ struct SlotCard: View {
             : Color(NSColor.controlBackgroundColor))
         .cornerRadius(6)
         .animation(.easeOut(duration: 0.3), value: isHighlighted)
+    }
+}
+
+/// Claude fill review (app only; the pasted text stays plain). Explicit fills green, inferred yellow,
+/// derived blue, unfilled blanks red; hover a filled value to see its source quote (and the conversion
+/// for derived values); criteria warnings above.
+struct FillReviewView: View {
+    let review: FillReview
+
+    private func highlighted(_ t: FillReview.Template) -> AttributedString {
+        var out = AttributedString()
+        let u = Array(t.text.utf16)
+        var pos = 0
+        func piece(_ a: Int, _ b: Int) -> AttributedString {
+            AttributedString(String(utf16CodeUnits: Array(u[max(0, a)..<min(u.count, b)]), count: max(0, min(u.count, b) - max(0, a))))
+        }
+        for m in t.marks where m.start >= pos && m.end <= u.count {
+            out += piece(pos, m.start)
+            var seg = piece(m.start, m.end)
+            seg.backgroundColor = m.kind == "explicit" ? .green.opacity(0.25) : m.kind == "inferred" ? .yellow.opacity(0.35)
+                : m.kind == "derived" ? .blue.opacity(0.2) : .red.opacity(0.2)
+            out += seg
+            pos = m.end
+        }
+        out += piece(pos, u.count)
+        return out
+    }
+
+    private func label(_ m: FillMark) -> String {
+        switch m.kind {
+        case "inferred": return "inferred: "
+        case "derived": return "derived: "
+        default: return "from note: "
+        }
+    }
+
+    private func tooltip(_ m: FillMark) -> String {
+        let quote = "\u{201C}" + (m.quote ?? "") + "\u{201D}"
+        guard let conversion = m.conversion else { return quote }
+        return quote + " (" + conversion + ")"
+    }
+
+    private func value(_ t: FillReview.Template, _ m: FillMark) -> String {
+        let u = Array(t.text.utf16)
+        guard m.start >= 0, m.end <= u.count, m.start < m.end else { return "" }
+        return String(utf16CodeUnits: Array(u[m.start..<m.end]), count: m.end - m.start)
+    }
+
+    var body: some View {
+        DisclosureGroup(review.notice ?? review.summary ?? "Claude fill") {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(review.flags.enumerated()), id: \.offset) { _, f in
+                    Text("\u{26A0}\u{FE0F} " + f.message).font(.caption2).foregroundColor(.orange)
+                }
+                ForEach(Array(review.templates.enumerated()), id: \.offset) { _, t in
+                    Text(highlighted(t)).font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
+                    ForEach(Array(t.marks.filter { $0.kind != "unfilled" }.enumerated()), id: \.offset) { _, m in
+                        Text(label(m) + value(t, m))
+                            .font(.caption2).foregroundColor(.secondary)
+                            .help(tooltip(m))
+                    }
+                }
+            }
+        }
+        .font(.caption)
     }
 }

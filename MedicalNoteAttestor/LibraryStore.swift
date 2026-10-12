@@ -62,6 +62,8 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var hasToken: Bool = false
     @Published var enabled: Bool { didSet { UserDefaults.standard.set(enabled, forKey: "libraryEnabled") } }
     @Published var insertion: String { didSet { UserDefaults.standard.set(insertion, forKey: "libraryInsertion") } }
+    /// Opt-in: fill inserted library blanks with Claude (user key only). Off by default.
+    @Published var claudeFill: Bool { didSet { UserDefaults.standard.set(claudeFill, forKey: "libraryClaudeFill") } }
 
     var hasLibrary: Bool { source != "none" }
     let snapshotTag: String?
@@ -77,6 +79,7 @@ final class LibraryStore: ObservableObject {
         let d = UserDefaults.standard
         enabled = d.object(forKey: "libraryEnabled") as? Bool ?? true
         insertion = d.string(forKey: "libraryInsertion") ?? "end"
+        claudeFill = d.object(forKey: "libraryClaudeFill") as? Bool ?? false
         cacheDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("MedicalNoteAttestor", isDirectory: true)
         snapshotTag = Bundle.main.object(forInfoDictionaryKey: "MNALibraryTag") as? String

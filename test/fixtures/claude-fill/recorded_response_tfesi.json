@@ -1,0 +1,199 @@
+{
+ "id": "msg_recorded_synthetic",
+ "type": "message",
+ "role": "assistant",
+ "model": "claude-sonnet-4-6",
+ "content": [
+  {
+   "type": "tool_use",
+   "id": "toolu_recorded",
+   "name": "record_blank_values",
+   "input": {
+    "values": [
+     {
+      "blank_id": 1,
+      "value": "left",
+      "kind": "explicit",
+      "source_quote": "left lower extremity radicular pain",
+      "source_section": "HPI"
+     },
+     {
+      "blank_id": 2,
+      "value": "L5",
+      "kind": "explicit",
+      "source_quote": "radicular pain in the L5 distribution",
+      "source_section": "HPI"
+     },
+     {
+      "blank_id": 3,
+      "value": "40",
+      "kind": "explicit",
+      "source_quote": "Positive straight leg raise on the left at 40 degrees",
+      "source_section": "Exam"
+     },
+     {
+      "blank_id": 4,
+      "value": "left L5",
+      "kind": "explicit",
+      "source_quote": "Diminished sensation in the left L5 dermatome",
+      "source_section": "Exam"
+     },
+     {
+      "blank_id": 5,
+      "value": "4",
+      "kind": "explicit",
+      "source_quote": "Strength 4/5 in left ankle dorsiflexion",
+      "source_section": "Exam"
+     },
+     {
+      "blank_id": 6,
+      "value": "left ankle dorsiflexion",
+      "kind": "explicit",
+      "source_quote": "Strength 4/5 in left ankle dorsiflexion",
+      "source_section": "Exam"
+     },
+     {
+      "blank_id": 7,
+      "value": "radiculopathy",
+      "kind": "explicit",
+      "source_quote": "Lumbar radiculopathy, left L5",
+      "source_section": "A&P"
+     },
+     {
+      "blank_id": 8,
+      "value": "MRI",
+      "kind": "inferred",
+      "source_quote": "MR lumbar spine 08/14/2026",
+      "source_section": "A&P"
+     },
+     {
+      "blank_id": 9,
+      "value": "2026-08-14",
+      "kind": "explicit",
+      "source_quote": "MR lumbar spine 08/14/2026",
+      "source_section": "A&P"
+     },
+     {
+      "blank_id": 10,
+      "value": "left paracentral disc protrusion",
+      "kind": "explicit",
+      "source_quote": "shows left paracentral disc protrusion at L4-L5",
+      "source_section": "A&P"
+     },
+     {
+      "blank_id": 11,
+      "value": "L4-L5",
+      "kind": "explicit",
+      "source_quote": "disc protrusion at L4-L5",
+      "source_section": "A&P"
+     },
+     {
+      "blank_id": 12,
+      "value": "8",
+      "kind": "derived",
+      "source_quote": "in the L5 distribution for two months",
+      "source_section": "HPI"
+     },
+     {
+      "blank_id": 13,
+      "value": "7",
+      "kind": "explicit",
+      "source_quote": "rated 7/10",
+      "source_section": "HPI"
+     },
+     {
+      "blank_id": 14,
+      "value": null,
+      "kind": "explicit",
+      "source_quote": "",
+      "source_section": "HPI"
+     },
+     {
+      "blank_id": 15,
+      "value": null,
+      "kind": "explicit",
+      "source_quote": "",
+      "source_section": "HPI"
+     },
+     {
+      "blank_id": 16,
+      "value": "6",
+      "kind": "explicit",
+      "source_quote": "Completed 6 weeks of PT and HEP",
+      "source_section": "HPI"
+     },
+     {
+      "blank_id": 17,
+      "value": "physical therapy and home exercise program",
+      "kind": "inferred",
+      "source_quote": "Completed 6 weeks of PT and HEP with minimal relief",
+      "source_section": "HPI"
+     },
+     {
+      "blank_id": 18,
+      "value": "home exercise program",
+      "kind": "inferred",
+      "source_quote": "Continue HEP",
+      "source_section": "A&P"
+     },
+     {
+      "blank_id": 19,
+      "value": "L4-L5",
+      "kind": "explicit",
+      "source_quote": "Proceed with left L4-L5 transforaminal epidural steroid injection",
+      "source_section": "A&P"
+     },
+     {
+      "blank_id": 20,
+      "value": "left",
+      "kind": "inferred",
+      "source_quote": "Proceed with left L4-L5 transforaminal epidural steroid injection",
+      "source_section": "A&P"
+     },
+     {
+      "blank_id": 21,
+      "value": "2026-05-02",
+      "kind": "explicit",
+      "source_quote": "No prior epidural steroid injections",
+      "source_section": "HPI"
+     },
+     {
+      "blank_id": 22,
+      "value": "60",
+      "kind": "inferred",
+      "source_quote": "Trial of gabapentin with partial relief",
+      "source_section": "HPI"
+     },
+     {
+      "blank_id": 23,
+      "value": null,
+      "kind": "explicit",
+      "source_quote": "",
+      "source_section": "HPI"
+     },
+     {
+      "blank_id": 24,
+      "value": null,
+      "kind": "explicit",
+      "source_quote": "",
+      "source_section": "HPI"
+     },
+     {
+      "blank_id": 25,
+      "value": "0",
+      "kind": "inferred",
+      "source_quote": "No prior epidural steroid injections",
+      "source_section": "HPI"
+     }
+    ],
+    "criteria_flags": [
+     {
+      "line_id": 9,
+      "message": "Baseline function score is not documented in the note."
+     }
+    ]
+   }
+  }
+ ],
+ "stop_reason": "tool_use"
+}

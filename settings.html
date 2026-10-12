@@ -322,6 +322,15 @@
                 <input type="checkbox" id="lib-enabled">
                 <label for="lib-enabled">Insert library exam text (F10) and dot-phrases (F11) after capture</label>
             </div>
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="lib-claude-fill">
+                <label for="lib-claude-fill">Fill library blanks with Claude</label>
+            </div>
+            <div class="help-text" id="lib-claude-fill-help" style="margin:-6px 0 12px 24px">
+                Off by default. When on, the captured HPI, exam and A&amp;P and the inserted template text are sent to
+                Anthropic's Claude with your API key (Settings &rarr; Claude API). Claude only proposes values with quotes
+                from the note; MNA checks each one against the note and leaves anything it can't verify as ___.
+            </div>
             <div class="form-group">
                 <label for="lib-insertion">Dot-phrase position in the A&amp;P paste</label>
                 <select id="lib-insertion">
@@ -578,11 +587,16 @@ Plan:
             ts.className = 'api-key-status ' + (st.hasToken ? 'set' : 'not-set');
             document.getElementById('lib-enabled').checked = !!st.enabled;
             document.getElementById('lib-insertion').value = st.insertion || 'end';
+            document.getElementById('lib-claude-fill').checked = !!st.claudeFill;
+            document.getElementById('lib-claude-fill-help').style.color = (st.claudeFill && !st.hasClaudeKey) ? '#cb2431' : '';
+            if (st.claudeFill && !st.hasClaudeKey) document.getElementById('lib-claude-fill-help').textContent =
+                'On, but no Claude API key is saved (Settings \u2192 Claude API), so nothing is sent and blanks stay as-is.';
         }
         (async () => {
             showLibrary(await window.electronAPI.libraryStatus());
             document.getElementById('lib-enabled').addEventListener('change', async (e) => showLibrary(await window.electronAPI.librarySetOptions({ enabled: e.target.checked })));
             document.getElementById('lib-insertion').addEventListener('change', async (e) => showLibrary(await window.electronAPI.librarySetOptions({ insertion: e.target.value })));
+            document.getElementById('lib-claude-fill').addEventListener('change', async (e) => showLibrary(await window.electronAPI.librarySetOptions({ claudeFill: e.target.checked })));
             document.getElementById('lib-refresh').addEventListener('click', async (e) => {
                 e.target.disabled = true; e.target.textContent = 'Refreshing\u2026';
                 try { showLibrary(await window.electronAPI.libraryRefresh()); } finally { e.target.disabled = false; e.target.textContent = 'Refresh now'; }
