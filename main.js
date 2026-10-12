@@ -955,6 +955,7 @@ ipcMain.handle('get-settings', () => {
         apHotkey:                 store.get('apHotkey'),
         heidiCopyEnabled:         store.get('heidiCopyEnabled'),
         captureHotkey:            store.get('captureHotkey'),
+        freedCaptureHotkey:       store.get('freedCaptureHotkey'),
         pasteHotkey1:             store.get('pasteHotkey1'),
         pasteHotkey2:             store.get('pasteHotkey2'),
         pasteHotkey3:             store.get('pasteHotkey3'),

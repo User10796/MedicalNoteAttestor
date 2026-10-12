@@ -47,7 +47,8 @@ test('no user-visible "Heidi" on Windows except hotkey labels naming the source'
     const visible = (txt) => txt.split('\n').filter(l => /Heidi/.test(l) && !/^\s*(\/\/|;|<!--|\/\*|\*)/.test(l));
     // HTML/JS UI files: no visible Heidi text at all (identifiers like setHeidiStatus are code, not text).
     for (const f of ['index.html', 'settings.html', 'picker.html', 'picker.js', 'overlay.html']) {
-        const hits = visible(read(f)).filter(l => /[>'"`][^<'"`]*\bHeidi\b/.test(l));
+        // Allowed: the per-source capture instructions ("Heidi: click into the note…").
+        const hits = visible(read(f)).filter(l => /[>'"`][^<'"`]*\bHeidi\b/.test(l) && !/Heidi: click into the note/.test(l));
         assert.deepStrictEqual(hits, [], f);
     }
     // Strings in main.js / renderer.js / AHK: only internal identifiers remain ([Heidi] ini section).
@@ -60,6 +61,20 @@ test('no user-visible "Heidi" on Windows except hotkey labels naming the source'
     // The hotkey labels that name a source stay.
     assert.match(read('lib/mna-core.js'), /label: 'Heidi capture', default: 'F8'/);
     assert.match(read('lib/mna-core.js'), /label: 'Freed capture', default: 'F7'/);
+});
+
+// ── Capture instructions name each source (both platforms) ──────────────────────────────────────
+test('capture help text names each source on Windows and Mac', () => {
+    const flat = (t) => t.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+    const main = flat(read('index.html'));
+    assert.match(main, /Heidi: click into the note, then press F8 \(it selects and copies for you\)\. Freed: click Copy all, then press F7\./);
+    assert.match(read('index.html'), /<kbd id="freed-key-label">F7<\/kbd>/);
+    assert.match(read('renderer.js'), /set\('freed-key-label', +settings\.freedCaptureHotkey \|\| 'F7'\)/);
+    assert.match(flat(read('settings.html')), /1\. Heidi: click into the note, then press F8 \(it selects and copies for you\)\. Freed: click Copy all, then press F7\./);
+    const mac = read('MedicalNoteAttestor/SettingsView.swift');
+    assert.ok(mac.includes('Text("1. Heidi: click into the note, then press \\(settings.captureHotkey) (it selects and copies for you). Freed: click Copy all, then press \\(settings.freedCaptureHotkey).")'));
+    for (const old of ['In the AI Note, Ctrl+A', 'Click into your AI Note', 'Ctrl+A and Ctrl+C fire automatically', 'Open patient note in Heidi'])
+        for (const f of ['index.html', 'settings.html', 'MedicalNoteAttestor/SettingsView.swift']) assert.ok(!read(f).includes(old), `${f}: ${old}`);
 });
 
 // ── Windows Heidi action items: off by default, Settings toggle ────────────────────────────────

@@ -80,8 +80,8 @@ struct SettingsView: View {
 
             Section("How It Works") {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("1. Open patient note in Heidi")
-                    Text("2. Press \(settings.captureHotkey) \u{2192} HPI and A/P load automatically")
+                    Text("1. Heidi: click into the note, then press \(settings.captureHotkey) (it selects and copies for you). Freed: click Copy all, then press \(settings.freedCaptureHotkey).")
+                    Text("2. HPI and A/P load automatically")
                     Text("3. Switch to Cerner (one trip):")
                     Text("   \u{2022} Click HPI field \u{2192} \(settings.pasteHotkey1) (auto-pastes)")
                     Text("   \u{2022} Click Exam field \u{2192} \(settings.pasteHotkey2) (auto-pastes)")
