@@ -182,5 +182,37 @@
  {
   "text": "Schedule MRI lumbar spine",
   "planned": false
+ },
+ {
+  "text": " - Right-sided L4 transforaminal epidural steroid injection",
+  "planned": true
+ },
+ {
+  "text": "Right-sided L4 transforaminal epidural steroid injection",
+  "planned": true
+ },
+ {
+  "text": "Bilateral L4-L5 medial branch blocks",
+  "planned": true
+ },
+ {
+  "text": "Left SI joint injection under fluoroscopy",
+  "planned": true
+ },
+ {
+  "text": "Prior right L4 transforaminal epidural steroid injection with 50% relief",
+  "planned": false
+ },
+ {
+  "text": "History of left SI joint injection",
+  "planned": false
+ },
+ {
+  "text": "Epidural steroid injection risks and benefits reviewed",
+  "planned": false
+ },
+ {
+  "text": "Transforaminal epidural steroid injection if no improvement",
+  "planned": false
  }
 ]
