@@ -190,12 +190,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     func libraryAfterCapture(captureId: UUID) async {
         let library = LibraryStore.shared
-        guard library.enabled, library.hasLibrary, let ap = HeidiSlotManager.shared.apSlot, !ap.isEmpty else { return }
+        let slotManager = HeidiSlotManager.shared
+        // Every exit publishes this capture's slots: at once without a planned procedure, or after
+        // the picker -> Claude fill flow (also when the picker is skipped, the fill fails or is cancelled).
+        defer { slotManager.publish(captureId) }
+        guard library.enabled, library.hasLibrary, let ap = slotManager.apSlot, !ap.isEmpty else { return }
         let decision = MNACore.shared.pickerOnCapture(ap: ap)
         if decision.open {
             await runLibraryFlow(captureId: captureId)
         } else if let notice = decision.notice {
-            FailureHUD.show(notice, style: .info)
+            slotManager.publish(captureId)
+            NoPlannedNotice.show(notice) { WhyNoPickerWindow.show(rows: MNACore.shared.pickerExplain(ap: ap)) }
         }
     }
 
@@ -208,6 +213,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             FailureHUD.show("Capture a note first, then open the payer picker.", style: .info)
             return
         }
+        // The picker and fill change the slots: hold pastes until they're published again.
+        slotManager.holdForProcessing(captureId)
+        defer { slotManager.publish(captureId) }
         await runLibraryFlow(captureId: captureId)
     }
 
@@ -257,10 +265,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     func runClaudeFill(note: [String: String], templates: [FillTemplate]) async -> (texts: [String]?, review: FillReview) {
         let core = MNACore.shared
-        func failed(_ reason: String, _ detail: Int? = nil) -> (texts: [String]?, review: FillReview) {
-            let text = core.fillNotice(reason, detail)
-            logger.info("claude fill: unavailable (\(reason, privacy: .public)\(detail.map { " \($0)" } ?? "", privacy: .public))")
-            FailureHUD.show(text, seconds: 6)
+        let progress = FillProgressPanel.shared
+        func failed(_ reason: String, _ detail: Int? = nil, notice: String? = nil) -> (texts: [String]?, review: FillReview) {
+            let text = notice ?? core.fillNotice(reason, detail)
+            logger.info("claude fill: \(reason == "cancelled" ? "cancelled" : "unavailable", privacy: .public) (\(reason, privacy: .public)\(detail.map { " \($0)" } ?? "", privacy: .public))")
+            progress.finish(text, stage: reason == "cancelled" ? "cancelled" : "error")
             return (nil, FillReview(notice: text))
         }
         let apiKey: String
@@ -273,23 +282,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             logger.info("claude fill: no blanks")
             return (nil, FillReview(notice: nil, summary: core.fillNotice("no-blanks")))
         }
-        guard let body = core.fillRequestBody(note: note, templates: templates, model: ClaudeAPIClient.model) else { return failed("request") }
-        FailureHUD.show(ClaudeFillProgress.started, seconds: ClaudeAPIClient.fillTimeout, style: .info)
-        let reply: String
-        do { reply = try await claudeClient.sendMessages(body: body, apiKey: apiKey) }
-        catch let f as ClaudeFillFailure { return failed(f.reason, f.detail) }
-        catch { return failed("network") }
-        guard let r = core.fillApply(note: note, templates: templates, response: reply), r.ok, let texts = r.texts else {
+        guard let body = core.fillRequestBody(note: note, templates: templates, model: core.fillModel, stream: true) else { return failed("request") }
+        let total = core.fillBlankCount(templates: templates)
+        // Streaming request: "Sending to Claude" -> "Claude is filling blanks (n of N)" -> "Checking values"
+        // -> "Done: filled X of N" or the error. Cancel publishes with the library text unfilled.
+        core.fillStreamBegin()
+        var streamError: MNACore.StreamError?
+        let client = claudeClient
+        let task = Task { @MainActor in
+            try await client.streamMessages(body: body, apiKey: apiKey) { line in
+                guard let st = core.fillStreamFeed(line + "\n") else { return true }
+                if let e = st.error { streamError = e }
+                if st.n > 0 { progress.update(stage: "filling", text: core.fillProgress("filling", st.n, total), n: st.n, total: total) }
+                return !st.done
+            }
+        }
+        progress.start(text: core.fillProgress("sending"), total: total) { task.cancel() }
+        do { try await task.value }
+        catch let f as ClaudeFillFailure {
+            if case .http(let code, let errBody) = f { return failed("http", code, notice: core.fillNotice("http", code, apiErrorBody: errBody)) }
+            return failed(f.reason, f.detail)
+        }
+        catch { return failed(task.isCancelled ? "cancelled" : "network") }
+        if task.isCancelled { return failed("cancelled") }
+        if let e = streamError { return failed("stream-error", notice: core.fillStreamErrorNotice(type: e.type, message: e.message)) }
+        progress.update(stage: "checking", text: core.fillProgress("checking"), n: total, total: total)
+        guard let reply = core.fillStreamMessage(),
+              let r = core.fillApply(note: note, templates: templates, response: reply), r.ok, let texts = r.texts else {
             return failed("malformed")
         }
         let c = r.counts
         logger.info("claude fill: \(c?.filled ?? 0, privacy: .public)/\(c?.blanks ?? 0, privacy: .public) filled, \(c?.rejected ?? 0, privacy: .public) rejected (\((r.rejectionReasons ?? []).joined(separator: "; "), privacy: .public))")
-        if let summary = r.summary { FailureHUD.show(summary, style: .info) }
+        progress.finish(core.fillProgress("done", c?.filled ?? 0, c?.blanks ?? total), stage: "done")
         return (texts, FillReview(notice: nil, summary: r.summary, flags: r.flags ?? [],
                                   templates: templates.indices.map { FillReview.Template(slot: templates[$0].slot, text: texts[$0], marks: r.marks?[$0] ?? []) }))
     }
 }
 
-enum ClaudeFillProgress {
-    static let started = "Claude is filling library blanks\u{2026}"
-}

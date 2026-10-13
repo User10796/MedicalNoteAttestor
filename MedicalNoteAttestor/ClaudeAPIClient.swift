@@ -2,13 +2,18 @@ import Foundation
 import AppKit
 
 /// Why a Claude fill request failed; the reason names map to MNACore.fillNotice (shared text).
+/// `http` carries the API's error body (Anthropic's error type and message; no patient data).
 enum ClaudeFillFailure: Error, Equatable {
-    case timeout, network, malformed
-    case http(Int)
+    case timeout, network, malformed, cancelled
+    case http(Int, String?)
+    case streamError(type: String, message: String)
     var reason: String {
-        switch self { case .timeout: return "timeout"; case .network: return "network"; case .malformed: return "malformed"; case .http: return "http" }
+        switch self {
+        case .timeout: return "timeout"; case .network: return "network"; case .malformed: return "malformed"
+        case .cancelled: return "cancelled"; case .http: return "http"; case .streamError: return "stream-error"
+        }
     }
-    var detail: Int? { if case .http(let c) = self { return c }; return nil }
+    var detail: Int? { if case .http(let c, _) = self { return c }; return nil }
 }
 
 enum ClaudeAPIError: Error, LocalizedError {
@@ -33,7 +38,14 @@ enum ClaudeAPIError: Error, LocalizedError {
 
 class ClaudeAPIClient {
     private let apiURL = URL(string: "https://api.anthropic.com/v1/messages")!
-    static let model = "claude-sonnet-4-6"
+    static let model = "claude-sonnet-4-6"   // same as MNACore.FILL_MODEL (tests check)
+
+    /// Optional Anthropic workspace ID (Settings > Claude API) for keys not scoped to a workspace:
+    /// without it such keys get HTTP 400 "must include the anthropic-workspace-id header". Not a secret.
+    static func addWorkspaceHeader(_ request: inout URLRequest) {
+        let w = MNACore.shared.normalizeWorkspaceId(UserDefaults.standard.string(forKey: "claudeWorkspaceId") ?? "")
+        if !w.isEmpty { request.setValue(w, forHTTPHeaderField: "anthropic-workspace-id") }
+    }
     private let claudeModel = ClaudeAPIClient.model
     private let maxTokens = 4096
 
@@ -112,31 +124,49 @@ class ClaudeAPIClient {
         return baseSystemPrompt + "\n\nADDITIONAL INSTRUCTIONS:\n" + customInstructions
     }
 
-    /// POST a prepared Messages API body (Claude fill). User key only. `timeout` bounds the WHOLE
-    /// request (a full template takes Claude well over 20 s). Returns the raw JSON or throws a
-    /// ClaudeFillFailure that names the reason (shown to the user; never the key or note text).
-    static let fillTimeout: TimeInterval = 60
-    func sendMessages(body: Data, apiKey: String, timeout: TimeInterval = ClaudeAPIClient.fillTimeout) async throws -> String {
+    /// POST a prepared, streaming Messages API body (Claude fill). User key only. Gives up after
+    /// `idleTimeout` with no bytes or `totalTimeout` in all. Each SSE line is handed to `onLine` (the
+    /// shared core parses it and counts values). Throws a ClaudeFillFailure naming the reason; Task
+    /// cancellation (the Cancel button) throws .cancelled. Never logs the key or note text.
+    static let fillIdleTimeout: TimeInterval = 30
+    static let fillTotalTimeout: TimeInterval = 120
+    func streamMessages(body: Data, apiKey: String, idleTimeout: TimeInterval = ClaudeAPIClient.fillIdleTimeout,
+                        totalTimeout: TimeInterval = ClaudeAPIClient.fillTotalTimeout,
+                        onLine: @escaping @MainActor (String) -> Bool) async throws {
         var request = URLRequest(url: apiURL)
         request.httpMethod = "POST"
-        request.timeoutInterval = timeout
+        request.timeoutInterval = idleTimeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        ClaudeAPIClient.addWorkspaceHeader(&request)
         request.httpBody = body
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = timeout
-        config.timeoutIntervalForResource = timeout
+        config.timeoutIntervalForRequest = idleTimeout       // idle: no bytes for this long
+        config.timeoutIntervalForResource = totalTimeout     // whole request
         let session = URLSession(configuration: config)
-        defer { session.finishTasksAndInvalidate() }
-        let data: Data, response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
-        catch let e as URLError where e.code == .timedOut { throw ClaudeFillFailure.timeout }
-        catch { throw ClaudeFillFailure.network }
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status == 200 else { throw ClaudeFillFailure.http(status) }
-        guard let text = String(data: data, encoding: .utf8) else { throw ClaudeFillFailure.malformed }
-        return text
+        defer { session.invalidateAndCancel() }
+        func mapped(_ error: Error) -> ClaudeFillFailure {
+            if error is CancellationError || Task.isCancelled { return .cancelled }
+            if let e = error as? URLError { return e.code == .cancelled ? .cancelled : e.code == .timedOut ? .timeout : .network }
+            return (error as? ClaudeFillFailure) ?? .network
+        }
+        do {
+            let (bytes, response) = try await session.bytes(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status != 200 {
+                var errBody = Data()
+                for try await b in bytes { errBody.append(b); if errBody.count > 16_384 { break } }
+                throw ClaudeFillFailure.http(status, String(data: errBody, encoding: .utf8))
+            }
+            for try await line in bytes.lines {
+                try Task.checkCancellation()
+                if !(await onLine(line)) { break }   // the core saw message_stop or an error event (parsed on the main actor)
+            }
+            try Task.checkCancellation()
+        } catch {
+            throw mapped(error)
+        }
     }
 
     @MainActor
@@ -149,6 +179,7 @@ class ClaudeAPIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        ClaudeAPIClient.addWorkspaceHeader(&request)
 
         let body: [String: Any] = [
             "model": claudeModel,
@@ -226,6 +257,7 @@ FORMAT:
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        ClaudeAPIClient.addWorkspaceHeader(&request)
 
         let body: [String: Any] = [
             "model": claudeModel,

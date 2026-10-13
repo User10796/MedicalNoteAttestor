@@ -171,6 +171,7 @@ struct SettingsView: View {
 struct ClaudeKeySection: View {
     @ObservedObject var settings = SettingsManager.shared
     @State private var newKey = ""
+    @AppStorage("claudeWorkspaceId") private var workspaceId = ""
 
     var body: some View {
         Section("API Key") {
@@ -184,6 +185,11 @@ struct ClaudeKeySection: View {
                     .font(.caption).foregroundColor(settings.hasClaudeAPIKey ? .green : .secondary)
             }
             Text("Stored in the macOS Keychain; never shown again. There is no built-in key: without your key, Claude features (Attestor Select, action items) are unavailable.")
+                .font(.caption).foregroundColor(.secondary)
+            TextField("Workspace ID (only if your key needs it), e.g. wrkspc_\u{2026}", text: $workspaceId)
+                .font(.system(size: 12, design: .monospaced))
+                .textFieldStyle(.roundedBorder)
+            Text("If Claude features fail with \u{201C}This API key is not scoped to a workspace\u{201D}, paste the workspace ID from console.anthropic.com (Settings \u{2192} Workspaces), or create a key inside a workspace. Not a secret.")
                 .font(.caption).foregroundColor(.secondary)
         }
     }

@@ -193,7 +193,9 @@ test('API error, network error, timeout or malformed reply -> blanks left as-is,
         [{ reply: response(500, { json: {} }) }, 'Claude fill failed (HTTP 500: Anthropic service error) \u2014 blanks left as-is.'],
         [{ reply: response(401, { json: {} }) }, 'Claude fill failed (HTTP 401: check your API key) \u2014 blanks left as-is.'],
         [{ reply: new Error('offline') }, 'Claude fill failed (network error) \u2014 blanks left as-is.'],
-        [{ delay: 500 }, 'Claude fill timed out after 60 s \u2014 blanks left as-is.'],
+        [{ delay: 500 }, 'Claude fill timed out (no reply from Claude) \u2014 blanks left as-is.'],
+        [{ reply: response(400, { json: { type: 'error', error: { type: 'invalid_request_error', message: 'tools.0.input_schema: example problem' } } }) },
+         'Claude fill failed (400 invalid_request_error: tools.0.input_schema: example problem) \u2014 blanks left as-is.'],
         [{ reply: response(200, { json: { content: [] } }) }, 'Claude fill failed (unexpected reply) \u2014 blanks left as-is.']
     ];
     for (const [opts, text] of cases) {
@@ -212,9 +214,12 @@ test('inserted text with no blanks -> no API call, review says so', async () => 
     assert.strictEqual(calls.length, 0);
     assert.strictEqual(r.review.summary, 'Claude fill: no blanks in the inserted library text.');
 });
-test('timeout default is 60 s (a full template takes Claude more than 20 s)', () => {
-    assert.strictEqual(core.FILL_TIMEOUT_MS, 60000);
-    assert.match(fs.readFileSync(path.join(__dirname, '..', 'lib', 'claude-fill-client.js'), 'utf8'), /timeoutMs = core\.FILL_TIMEOUT_MS/);
+test('timeouts: 30 s with no bytes from Claude, 120 s in all (streaming keeps a long fill alive)', () => {
+    assert.strictEqual(core.FILL_IDLE_TIMEOUT_MS, 30000);
+    assert.strictEqual(core.FILL_TIMEOUT_MS, 120000);
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'claude-fill-client.js'), 'utf8');
+    assert.match(src, /timeoutMs = core\.FILL_TIMEOUT_MS/);
+    assert.match(src, /idleMs = core\.FILL_IDLE_TIMEOUT_MS/);
 });
 test('logs counts and reasons only (never note text or values)', async () => {
     const lines = [];
@@ -249,10 +254,116 @@ test('main.js wiring: setting off by default, user key only, CLAUDE_MODEL, captu
     const src = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
     assert.match(src, /libraryClaudeFill: false,/);
     assert.match(src, /getKey: \(\) => secrets\.lookup\('claudeApiKey'\),/);
-    assert.match(src, /notify: \(text\) => showNotice\(text\)/, 'fill notices are visible');
+    assert.match(src, /onProgress: \(p\) => showFillProgress\(p\)/, 'fill stages and errors are shown in the progress window (over any app)');
+    assert.match(src, /notify: \(text\) => \{ if \(mainWindow\) mainWindow\.webContents\.send\('source-notice', text\); \}/, 'and in the main window');
     assert.match(src, /isEnabled: \(\) => !!store\.get\('libraryClaudeFill'\),/);
     assert.match(src, /model: CLAUDE_MODEL,/);
     assert.match(src, /const fillExam = source === 'freed' \? freedExam : '';/);
     assert.match(src, /fillBlanks: \(req\) => claudeFiller\.fill\(req\),/);
     assert.match(src, /webContents\.send\('library-fill-review', review \|\| null\)/);
+});
+
+// ── Streaming reply, progress, Cancel (2026-10-12) ─────────────────────────────────────────────
+// Build an SSE stream of the recorded tool call, split into small chunks (lines split across chunks).
+function sseChunks(message, { error } = {}) {
+    const tu = message.content.find(c => c.type === 'tool_use');
+    const json = JSON.stringify(tu.input);
+    const ev = (o) => 'event: ' + o.type + '\ndata: ' + JSON.stringify(o) + '\n\n';
+    let out = ev({ type: 'message_start', message: { id: 'msg_test', type: 'message', role: 'assistant', content: [] } });
+    out += ev({ type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_test', name: tu.name, input: {} } });
+    for (let i = 0; i < json.length; i += 37) out += ev({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: json.slice(i, i + 37) } });
+    if (error) return chunk(out.slice(0, out.length / 2) + ev({ type: 'error', error }));
+    out += ev({ type: 'content_block_stop', index: 0 }) + ev({ type: 'message_delta', delta: { stop_reason: 'tool_use' } }) + ev({ type: 'message_stop' });
+    return chunk(out);
+}
+function chunk(text) { const parts = []; for (let i = 0; i < text.length; i += 53) parts.push(Buffer.from(text.slice(i, i + 53))); return parts; }
+function streamResponse(parts, { gate } = {}) {
+    let i = 0;
+    return { status: 200, ok: true, headers: { get: (k) => k.toLowerCase() === 'content-type' ? 'text/event-stream' : null },
+        body: { getReader: () => ({ read: async () => { if (gate) await gate(i); return i < parts.length ? { value: parts[i++], done: false } : { done: true }; } }) } };
+}
+
+test('stream parser: counts values as they arrive and rebuilds the tool call (shared core)', () => {
+    const st = core.fillStreamStart();
+    const counts = [];
+    for (const p of sseChunks(recorded)) { core.fillStreamFeed(st, p.toString()); counts.push(st.n); }
+    assert.ok(counts.some(n => n > 0 && n < 25), 'partial counts reported');
+    assert.strictEqual(st.n, 25);
+    assert.strictEqual(st.stop, 'tool_use');
+    assert.deepStrictEqual(core.fillStreamMessage(st).content[0].input, recorded.content.find(c => c.type === 'tool_use').input);
+});
+
+test('streaming fill: same filled text as the recorded reply; progress sending -> filling n of N -> checking -> done', async () => {
+    const stages = [];
+    const f = createClaudeFiller({ fetchImpl: async () => streamResponse(sseChunks(recorded)), getKey: () => 'k', isEnabled: () => true,
+        model: core.FILL_MODEL, onProgress: (p) => stages.push(p) });
+    const r = await f.fill({ note, results: results() });
+    const filled = r.results.find(x => x.insert);
+    assert.strictEqual(filled.dotphrase, read('expected_ap.txt').replace(/\n$/, ''));
+    assert.strictEqual(filled.examText, read('expected_exam.txt').replace(/\n$/, ''));
+    const kinds = stages.map(p => p.stage);
+    assert.strictEqual(kinds[0], 'sending');
+    assert.strictEqual(stages[0].text, 'Sending to Claude');
+    const filling = stages.filter(p => p.stage === 'filling');
+    assert.ok(filling.length > 3, 'several n-of-N updates');
+    assert.match(filling[1].text, /^Claude is filling blanks \(\d+ of 25\)$/);
+    assert.deepStrictEqual(kinds.slice(-2), ['checking', 'done']);
+    assert.strictEqual(stages[stages.length - 1].text, 'Done: filled 19 of 25');
+    assert.ok(stages.every(p => typeof p.elapsed === 'number' && typeof p.startedAt === 'number'), 'elapsed time reported');
+});
+
+test('streaming error event -> notice with the API error type and message', async () => {
+    const f = createClaudeFiller({ fetchImpl: async () => streamResponse(sseChunks(recorded, { error: { type: 'overloaded_error', message: 'Overloaded' } })),
+        getKey: () => 'k', isEnabled: () => true, model: core.FILL_MODEL });
+    const r = await f.fill({ note, results: results() });
+    assert.strictEqual(r.review.notice, 'Claude fill failed (overloaded_error: Overloaded) \u2014 blanks left as-is.');
+});
+
+test('Cancel mid-stream -> library text unfilled, "cancelled" notice, progress says so', async () => {
+    let f;
+    const stages = [];
+    const parts = sseChunks(recorded);
+    const gate = async (i) => { if (i === 10) { f.cancel(); await new Promise(r => setTimeout(r, 5)); } };
+    const fetchImpl = async (url, opts) => {
+        const res = streamResponse(parts, { gate });
+        const read = res.body.getReader().read;
+        res.body.getReader = () => ({ read: async () => { if (opts.signal.aborted) { const e = new Error('aborted'); e.name = 'AbortError'; throw e; } return read(); } });
+        return res;
+    };
+    f = createClaudeFiller({ fetchImpl, getKey: () => 'k', isEnabled: () => true, model: core.FILL_MODEL, onProgress: (p) => stages.push(p) });
+    const base = results();
+    const r = await f.fill({ note, results: base });
+    assert.strictEqual(r.cancelled, true);
+    assert.deepStrictEqual(r.results, base, 'library text unfilled');
+    assert.strictEqual(r.review.notice, 'Claude fill cancelled \u2014 blanks left as-is.');
+    assert.strictEqual(stages[stages.length - 1].stage, 'cancelled');
+    assert.strictEqual(f.cancel(), false, 'nothing left to cancel');
+});
+
+// ── Request body passes the API's schema checks (the cause of a 400 would show here) ───────────
+test('request body (stream and non-stream) passes the Messages API checks for the fill model', () => {
+    for (const stream of [false, true]) {
+        const { body } = core.fillRequest(note, core.fillTemplatesFromResults(results()), core.FILL_MODEL, { stream });
+        assert.deepStrictEqual(core.fillCheckRequestBody(body), [], 'stream ' + stream);
+        assert.strictEqual(body.stream, stream);
+        assert.strictEqual(body.model, core.FILL_MODEL);
+        assert.deepStrictEqual(body.tool_choice, { type: 'tool', name: 'record_blank_values' });
+        assert.ok(!('thinking' in body) && !('temperature' in body));
+    }
+});
+test('body checks catch the mistakes that return a 400', () => {
+    const good = core.fillRequest(note, core.fillTemplatesFromResults(results()), core.FILL_MODEL).body;
+    const bad = (mut) => { const b = JSON.parse(JSON.stringify(good)); mut(b); return core.fillCheckRequestBody(b); };
+    assert.ok(bad(b => { b.model = 'claude-sonnet-5-5'; }).some(p => /rejects forced tool_choice/.test(p)), 'forced tool on a model that rejects it');
+    assert.ok(bad(b => { b.max_tokens = 0; }).some(p => /max_tokens/.test(p)));
+    assert.ok(bad(b => { b.tools[0].input_schema.properties.values.items.properties.value.type = ['string', 'nil']; }).some(p => /unknown type nil/.test(p)));
+    assert.ok(bad(b => { b.tools[0].input_schema.properties.values.items.oneOf = []; }).some(p => /unsupported keyword oneOf/.test(p)));
+    assert.ok(bad(b => { b.tool_choice.name = 'other'; }).some(p => /not defined/.test(p)));
+    assert.ok(bad(b => { b.temperature = 0; }).some(p => /unexpected top-level field temperature/.test(p)));
+    assert.deepStrictEqual(bad(() => {}), [], '["string","null"] type arrays are allowed');
+});
+test('the fill model is shared: Electron and Swift both use core.FILL_MODEL', () => {
+    assert.strictEqual(core.FILL_MODEL, 'claude-sonnet-4-6');
+    assert.match(fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8'), /model: core\.FILL_MODEL,/);
+    assert.match(fs.readFileSync(path.join(__dirname, '..', 'MedicalNoteAttestor', 'MedicalNoteAttestorApp.swift'), 'utf8'), /model: core\.fillModel/);
 });

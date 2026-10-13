@@ -36,6 +36,14 @@ class HeidiSlotManager: ObservableObject {
     private var libraryPlanLine: Int? = nil
     /// Claude fill review for the current capture (app only; never pasted).
     @Published private(set) var fillReview: FillReview? = nil
+    /// Hold the slots until processing is done: set for every new capture until it is published
+    /// (at once without a planned procedure; after the picker + Claude fill with one). While set,
+    /// paste keys paste nothing and say so. Never publish partially processed slots.
+    @Published private(set) var processingCaptureId: UUID? = nil
+    var isProcessing: Bool { processingCaptureId != nil && processingCaptureId == captureId }
+    func holdForProcessing(_ id: UUID) { if id == captureId { processingCaptureId = id } }
+    /// Publish: only the current capture's hold can be released (an older flow never publishes a newer one).
+    func publish(_ id: UUID) { if processingCaptureId == id { processingCaptureId = nil } }
     var libraryAdded: Bool { !libraryExams.isEmpty || !libraryDots.isEmpty }
 
     private let examDotPhraseKey = "examDotPhrase"
@@ -52,6 +60,7 @@ class HeidiSlotManager: ObservableObject {
     }
 
     func clearNoteSlots() {
+        processingCaptureId = nil
         hpiSlot = nil
         apSlot = nil
         clearLibrary()
@@ -72,6 +81,7 @@ class HeidiSlotManager: ObservableObject {
         FreedCapture.shared.resetDuplicateGuard()   // a Heidi capture replaced the slots
         let id = UUID()
         captureId = id
+        processingCaptureId = id   // nothing pasteable until the capture is processed or published
         return id
     }
 
@@ -86,11 +96,13 @@ class HeidiSlotManager: ObservableObject {
         freedExam = slots.exam
         let id = UUID()
         captureId = id
+        processingCaptureId = id   // nothing pasteable until the capture is processed or published
         return id
     }
 
     /// Failed capture: clear every slot so nothing (not even the exam dot-phrase) can be pasted.
     func markCaptureFailed() {
+        processingCaptureId = nil
         hpiSlot = nil
         apSlot = nil
         clearLibrary()
@@ -135,6 +147,10 @@ class HeidiSlotManager: ObservableObject {
     }
 
     func writeToClipboard(slot: Int) {
+        if isProcessing {
+            FailureHUD.show(MNACore.shared.stillProcessing, style: .info)
+            return
+        }
         let decision = CaptureGate.decide(slot: slot, failed: captureFailed, source: activeSource,
                                           hpi: hpiSlot, exam: composedExam, ap: composedAP)
         switch decision {

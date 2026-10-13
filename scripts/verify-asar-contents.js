@@ -33,6 +33,7 @@ const norm = new Set(
 
 const required = ['index.html', 'settings.html', 'overlay.html', 'preload.js', 'overlay-preload.js', 'build-info.json',
                   'picker.html', 'picker.js', 'picker-preload.js',
+                  'fill-progress.html', 'fill-progress.js', 'fill-progress-preload.js', 'lib/processing-hold.js', 'lib/claude-fill-client.js',
                   'lib/slot-poller.js', 'lib/mna-core.js', 'lib/library-client.js', 'lib/capture-flow.js',
                   'lib/freed-parser.js', 'lib/freed-capture.js', 'lib/source-profiles.js',
                   'resources/library.snapshot.json'];

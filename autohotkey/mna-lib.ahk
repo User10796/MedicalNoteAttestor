@@ -146,3 +146,30 @@ MnaParseNotice(raw, lastId) {
         return ""
     return Map("id", parts[2], "message", msg)
 }
+
+; Electron writes mna-hold.txt ("MNA-HOLD1 <captureTs> hold|ready") while it runs the picker / Claude
+; fill for a capture. Returns Map(ts, state) or "".
+MnaReadHold(path) {
+    try raw := FileRead(path, "UTF-8")
+    catch
+        return ""
+    raw := RegExReplace(raw, "^\x{FEFF}", "")
+    if !RegExMatch(raw, "^MNA-HOLD1 (\S+) (hold|ready)\s*$", &m)
+        return ""
+    return Map("ts", m[1], "state", m[2])
+}
+
+; Paste nothing while the capture is held: "hold" for this capture, or no verdict yet (Electron decides
+; within a moment; if it never answers, publish after 3 s). A failed capture is handled elsewhere.
+MnaPasteBlocked(captureTs, captureFailed, hold, msSinceCapture) {
+    if (captureTs = "" || captureFailed)
+        return false
+    if (IsObject(hold) && hold["ts"] = captureTs)
+        return hold["state"] = "hold"
+    return msSinceCapture < 3000
+}
+
+MnaStillProcessingText() {
+    return "Still processing " Chr(0x2014) " wait for the picker/fill to finish."
+}
+

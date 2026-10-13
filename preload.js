@@ -29,5 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveHotkeys:         (b) => ipcRenderer.invoke('save-hotkeys', b),
     onSourceNotice:      (cb) => ipcRenderer.on('source-notice', (e, m) => cb(m)),
     openPickerManually:  () => ipcRenderer.invoke('open-picker-manually'),
-    onLibraryFillReview: (cb) => ipcRenderer.on('library-fill-review', (e, r) => cb(r))
+    onLibraryFillReview: (cb) => ipcRenderer.on('library-fill-review', (e, r) => cb(r)),
+    onProcessing:        (cb) => ipcRenderer.on('processing', (e, holding) => cb(!!holding)),
+    pickerExplain:       () => ipcRenderer.invoke('picker-explain')   // on screen only; never logged
 });

@@ -437,6 +437,19 @@
 
         <div id="heidi-status" class="status"
              style="margin-top:10px; text-align:center;"></div>
+        <div style="text-align:center;">
+            <button class="btn-sm" id="why-no-picker" style="display:none; margin-top:4px;"
+                    onclick="showPickerExplain()">Why no picker?</button>
+        </div>
+        <!-- "Why no picker?": local only (on screen, never logged) -->
+        <div id="picker-explain" style="display:none; margin:6px 0; padding:6px 8px; border:1px solid #e1e4e8; border-radius:6px;
+             background:#fff; font-size:11px; max-height:220px; overflow:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <strong>A&amp;P lines checked for a planned procedure</strong>
+                <button class="btn-sm" onclick="document.getElementById('picker-explain').style.display='none'">Close</button>
+            </div>
+            <div id="picker-explain-rows"></div>
+        </div>
     </div>
 
     </div><!-- /.collapsible-content -->
