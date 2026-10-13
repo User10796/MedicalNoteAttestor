@@ -31,5 +31,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openPickerManually:  () => ipcRenderer.invoke('open-picker-manually'),
     onLibraryFillReview: (cb) => ipcRenderer.on('library-fill-review', (e, r) => cb(r)),
     onProcessing:        (cb) => ipcRenderer.on('processing', (e, holding) => cb(!!holding)),
-    pickerExplain:       () => ipcRenderer.invoke('picker-explain')   // on screen only; never logged
+    pickerExplain:       () => ipcRenderer.invoke('picker-explain'),   // on screen only; never logged
+    criteriaSwitchGet:   () => ipcRenderer.invoke('criteria-switch-get'),
+    criteriaSwitchSet:   (on) => ipcRenderer.invoke('criteria-switch-set', on),
+    onCriteriaSwitch:    (cb) => ipcRenderer.on('criteria-switch', (e, s) => cb(s))
 });

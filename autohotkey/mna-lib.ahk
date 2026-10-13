@@ -173,3 +173,13 @@ MnaStillProcessingText() {
     return "Still processing " Chr(0x2014) " wait for the picker/fill to finish."
 }
 
+; "Include procedure criteria" switch (Electron writes mna-criteria.txt: "MNA-CRIT1 on|off"). Read at
+; A&P paste time. Missing or unreadable -> On (the default).
+MnaCriteriaOn(path) {
+    try raw := FileRead(path, "UTF-8")
+    catch
+        return true
+    raw := RegExReplace(raw, "^\x{FEFF}", "")
+    return !RegExMatch(raw, "^MNA-CRIT1 off\s*$")
+}
+

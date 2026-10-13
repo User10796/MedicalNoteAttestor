@@ -50,8 +50,21 @@ class HeidiSlotManager: ObservableObject {
     // Non-isolated so URLSession can run off main thread
     private let claudeClient = ClaudeAPIClient()
 
+    /// "Include procedure criteria" switch (main screen): the A&P paste includes the library criteria
+    /// text when on, only the captured A&P when off. Read when the A&P paste key is pressed; the exam
+    /// slot is not affected. Persists; reset to On for each new capture unless Settings says otherwise.
+    @Published var includeCriteria: Bool { didSet { UserDefaults.standard.set(includeCriteria, forKey: Self.includeCriteriaKey) } }
+    static let includeCriteriaKey = "includeCriteria"
+    static let criteriaResetKey = "criteriaResetOnCapture"
+    private func resetCriteriaForNewCapture() {
+        let next = MNACore.shared.criteriaSwitchAfterCapture(current: includeCriteria,
+                                                             resetOnCapture: UserDefaults.standard.object(forKey: Self.criteriaResetKey) as? Bool ?? true)
+        if next != includeCriteria { includeCriteria = next }
+    }
+
     init() {
         examSlot = UserDefaults.standard.string(forKey: examDotPhraseKey) ?? ""
+        includeCriteria = UserDefaults.standard.object(forKey: Self.includeCriteriaKey) as? Bool ?? true
     }
 
     func saveExamDotPhrase(_ text: String) {
@@ -82,6 +95,7 @@ class HeidiSlotManager: ObservableObject {
         let id = UUID()
         captureId = id
         processingCaptureId = id   // nothing pasteable until the capture is processed or published
+        resetCriteriaForNewCapture()
         return id
     }
 
@@ -97,6 +111,7 @@ class HeidiSlotManager: ObservableObject {
         let id = UUID()
         captureId = id
         processingCaptureId = id   // nothing pasteable until the capture is processed or published
+        resetCriteriaForNewCapture()
         return id
     }
 
@@ -141,7 +156,7 @@ class HeidiSlotManager: ObservableObject {
     var composedAP: String? {
         if captureFailed { return nil }
         guard let ap = apSlot else { return nil }
-        if libraryDots.isEmpty { return ap }
+        if libraryDots.isEmpty || !includeCriteria { return ap }   // switch off: only the captured A&P
         return MNACore.shared.composeAP(ap: ap, dotphrases: libraryDots,
                                         insertion: LibraryStore.shared.insertion, planLine: libraryPlanLine)
     }

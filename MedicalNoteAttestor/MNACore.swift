@@ -209,6 +209,9 @@ final class MNACore {
     }
     var fillModel: String { call("(function () { return MNACore.FILL_MODEL; })", [], as: String.self) ?? "claude-sonnet-4-6" }
     var stillProcessing: String { call("(function () { return MNACore.STILL_PROCESSING; })", [], as: String.self) ?? "Still processing \u{2014} wait for the picker/fill to finish." }
+    func criteriaSwitchAfterCapture(current: Bool, resetOnCapture: Bool) -> Bool {
+        call("MNACore.criteriaSwitchAfterCapture", [current, resetOnCapture], as: Bool.self) ?? true
+    }
     func normalizeWorkspaceId(_ s: String) -> String { call("MNACore.normalizeWorkspaceId", [s], as: String.self) ?? "" }
     func fillBlankCount(templates: [FillTemplate]) -> Int {
         guard let t = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(templates)) else { return 0 }

@@ -50,3 +50,10 @@
   planned procedure -> picker -> fill -> publish all slots together; otherwise publish at once. Windows: Electron
   writes `mna-hold.txt` (`MNA-HOLD1 <captureTs> hold|ready`), AHK checks it on every paste (3 s fallback only if
   Electron never answers). "Why no picker?" (`MNACore.pickerExplain`) is on screen only, never logged.
+- Criteria gaps (2026-10-12): one short line each, no blank/line IDs, addressed to "you", no speculation about the
+  patient (prompt rule 7 + `MNACore.fillFormatFlag` enforces it); shown collapsed ("⚠ N criteria gaps ▸") above the
+  slots. A zero/"none" value needs a quote that explicitly says none of that thing (`zeroSupported`); absence of
+  mention leaves the blank empty.
+- "Include procedure criteria" switch (main screen, near A&P; both platforms): A&P paste with or without the library
+  criteria text, read at paste time (Windows: `mna-criteria.txt` "MNA-CRIT1 on|off" read by AHK). Exam unaffected.
+  Setting "Reset criteria switch to On for each new capture" (default on; `MNACore.criteriaSwitchAfterCapture`).

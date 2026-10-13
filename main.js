@@ -151,6 +151,8 @@ const DEFAULTS = {
     libraryEnabled: true,
     libraryInsertion: 'end',     // 'end' | 'after_plan_line'
     libraryClaudeFill: false,
+    includeCriteria: true,         // main-screen switch: A&P paste includes the library criteria text
+    criteriaResetOnCapture: true,  // every new capture sets the switch back to On
     claudeWorkspaceId: '',       // optional: Anthropic workspace ID for keys not scoped to a workspace    // opt-in: fill library blanks with Claude (needs the user's key)
     libraryTokenEnc: '',         // safeStorage-encrypted (DPAPI on Windows); never plaintext
     payerRecents: [],
@@ -281,8 +283,26 @@ function pasteState() {
     // Freed -> Freed's exam, or the default exam when Freed's is empty/N/A.
     return { failed: captureFailed, hpi: slots.hpi, ap: slots.ap,
              examDotPhrase: examFallback(currentSource, freedExam, getExamSlot()),
-             composedExam: c && c.exam, composedAp: c && c.ap };
+             composedExam: c && c.exam, composedAp: c && c.ap, includeCriteria: includeCriteria() };
 }
+
+// ── "Include procedure criteria" switch (A&P only; read when the A&P paste key is pressed) ──────
+// Windows: AHK reads mna-criteria.txt ("MNA-CRIT1 on|off") at paste time, so flipping it after a
+// capture works without re-capturing. Library exam text is not affected.
+function includeCriteria() { return store.get('includeCriteria') !== false; }
+function writeCriteriaFile() {
+    if (process.platform !== 'win32') return;
+    try { writeUtf8NoBom(path.join(getAhkPaths().dir, 'mna-criteria.txt'), `MNA-CRIT1 ${includeCriteria() ? 'on' : 'off'}`); }
+    catch (e) { console.error('criteria switch write failed:', e.message); }
+}
+function setIncludeCriteria(on) {
+    store.set('includeCriteria', !!on);
+    writeCriteriaFile();
+    if (mainWindow) mainWindow.webContents.send('criteria-switch', { on: includeCriteria() });
+    sendSlotState();   // the A&P preview follows the switch
+}
+ipcMain.handle('criteria-switch-get', () => ({ on: includeCriteria(), resetOnCapture: store.get('criteriaResetOnCapture') !== false }));
+ipcMain.handle('criteria-switch-set', (e, on) => { setIncludeCriteria(!!on); return { on: includeCriteria() }; });
 function effectiveExam() { return slotContent('exam', pasteState()) || null; }
 function effectiveAp() { return slotContent('ap', pasteState()) || null; }
 function libraryUiState() {
@@ -379,6 +399,8 @@ const captureFlow = createCaptureFlow({
 function beginCapture(captureTs) {
     currentCaptureTs = captureTs;
     processing.capture(captureTs);   // nothing pasteable until the capture is processed or published
+    const next = core.criteriaSwitchAfterCapture(includeCriteria(), store.get('criteriaResetOnCapture') !== false);
+    if (next !== includeCriteria()) setIncludeCriteria(next);
     lastComposed = null;
     if (mainWindow) mainWindow.webContents.send('library-fill-review', null);
     captureFlow.reset();
@@ -1066,6 +1088,7 @@ function libraryStatusForUi() {
              encryptionAvailable: safeStorage.isEncryptionAvailable(),
              enabled: !!store.get('libraryEnabled'), insertion: store.get('libraryInsertion') || 'end',
              claudeFill: !!store.get('libraryClaudeFill'), hasClaudeKey: secrets.has('claudeApiKey'),
+             criteriaResetOnCapture: store.get('criteriaResetOnCapture') !== false,
              snapshotTag: getLibraryClient().snapshotTag() };
 }
 ipcMain.handle('library-status', () => libraryStatusForUi());
@@ -1082,6 +1105,7 @@ ipcMain.handle('library-set-options', (e, o) => {
     if (o && typeof o.enabled === 'boolean') store.set('libraryEnabled', o.enabled);
     if (o && (o.insertion === 'end' || o.insertion === 'after_plan_line')) store.set('libraryInsertion', o.insertion);
     if (o && typeof o.claudeFill === 'boolean') store.set('libraryClaudeFill', o.claudeFill);
+    if (o && typeof o.criteriaResetOnCapture === 'boolean') store.set('criteriaResetOnCapture', o.criteriaResetOnCapture);
     sendSlotState();
     return libraryStatusForUi();
 });
@@ -1396,6 +1420,7 @@ app.whenReady().then(() => {
             composedStore().clear();
             writeAhkConfig(store.get('examDotPhrase') || '');
             writeHotkeysJson();
+            writeCriteriaFile();
             launchAHK();
             watchSlotsFile();
             watchFreedClip();

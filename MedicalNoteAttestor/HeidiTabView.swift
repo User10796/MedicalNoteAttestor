@@ -6,6 +6,10 @@ struct HeidiTabView: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            // Criteria gaps from the Claude fill: one line each, collapsed by default (note stays visible).
+            if let flags = slotManager.fillReview?.flags, !flags.isEmpty, slotManager.fillReview?.notice == nil {
+                CriteriaGapsView(flags: flags)
+            }
             // Slot order: HPI → Exam → A/P
             SlotCard(label: "HPI",
                      hotkeyLabel: settings.pasteHotkey1,
@@ -30,6 +34,13 @@ struct HeidiTabView: View {
                      isLoading: slotManager.isLoadingBullets,
                      emptyLabel: "Empty",
                      onCopy: { slotManager.writeToClipboard(slot: 3) })
+            // A&P only: include the library criteria text (filled where possible) in the A&P paste.
+            Toggle("Include procedure criteria", isOn: $slotManager.includeCriteria)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .help("On: the A&P paste includes the procedure criteria text. Off: only the captured A&P.")
 
             Button(action: {
                 Task { await AppDelegate.shared?.performCapture() }
@@ -183,9 +194,6 @@ struct FillReviewView: View {
     var body: some View {
         DisclosureGroup(review.notice ?? review.summary ?? "Claude fill") {
             VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(review.flags.enumerated()), id: \.offset) { _, f in
-                    Text("\u{26A0}\u{FE0F} " + f.message).font(.caption2).foregroundColor(.orange)
-                }
                 ForEach(Array(review.templates.enumerated()), id: \.offset) { _, t in
                     Text(highlighted(t)).font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
                     ForEach(Array(t.marks.filter { $0.kind != "unfilled" }.enumerated()), id: \.offset) { _, m in
@@ -199,3 +207,26 @@ struct FillReviewView: View {
         .font(.caption)
     }
 }
+
+/// "⚠ N criteria gaps ▸" above the slots: collapsed by default; one short line per gap.
+struct CriteriaGapsView: View {
+    let flags: [FillFlag]
+    @State private var expanded = false
+    var body: some View {
+        DisclosureGroup(isExpanded: $expanded) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(flags.enumerated()), id: \.offset) { _, f in
+                    Text("\u{2022} " + f.message).font(.caption2).foregroundColor(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Text("\u{26A0} \(flags.count) criteria gap\(flags.count == 1 ? "" : "s")")
+                .font(.caption).bold().foregroundColor(.orange)
+        }
+        .id(flags.map(\.message).joined(separator: "|"))   // a new fill starts collapsed
+        .padding(6)
+        .background(Color.yellow.opacity(0.12)).cornerRadius(6)
+    }
+}
+

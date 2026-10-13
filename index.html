@@ -369,6 +369,18 @@
             Freed: click Copy all, then press <kbd id="freed-key-label">F7</kbd>.
         </div>
 
+        <!-- Criteria gaps from the Claude fill: one line each, collapsed by default so the note stays visible -->
+        <details id="criteria-gaps" style="display:none; margin:0 0 6px; padding:4px 8px; border:1px solid #f0c36d;
+                 border-radius:6px; background:#fffbe6; font-size:11px;">
+            <summary id="criteria-gaps-summary" style="cursor:pointer; font-weight:600; color:#7a5d00; list-style:none;"></summary>
+            <ul id="criteria-gaps-list" style="margin:4px 0 2px 16px; padding:0; color:#5c4600;"></ul>
+        </details>
+        <style>
+            #criteria-gaps summary::-webkit-details-marker { display:none; }
+            #criteria-gaps summary::after { content:' \25B8'; }
+            #criteria-gaps[open] summary::after { content:' \25BE'; }
+        </style>
+
         <!-- Slot order: HPI → Exam → A/P -->
         <div class="slot-card" id="slot-hpi">
             <div class="slot-icon" id="hpi-icon">&#9898;</div>
@@ -405,6 +417,22 @@
             <button class="btn btn-secondary slot-copy-btn"
                     onclick="manualCopySlot('ap')">Copy</button>
         </div>
+        <!-- A&P only: include the library criteria text (filled where possible) in the A&P paste -->
+        <label class="criteria-switch" title="On: the A&amp;P paste includes the procedure criteria text. Off: only the captured A&amp;P.">
+            <input type="checkbox" role="switch" id="criteria-switch" checked onchange="setCriteriaSwitch(this.checked)">
+            <span class="track"><span class="knob"></span></span>
+            <span class="criteria-switch-label">Include procedure criteria</span>
+        </label>
+        <style>
+            .criteria-switch { display:flex; align-items:center; gap:8px; margin:-2px 0 8px 4px; font-size:12px; cursor:pointer; user-select:none; }
+            .criteria-switch input { position:absolute; opacity:0; width:0; height:0; }
+            .criteria-switch .track { position:relative; width:30px; height:17px; border-radius:9px; background:#c8ccd1; transition:background .15s; flex:none; }
+            .criteria-switch .knob { position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:#fff;
+                                     box-shadow:0 1px 2px rgba(0,0,0,.3); transition:left .15s; }
+            .criteria-switch input:checked + .track { background:#2da44e; }
+            .criteria-switch input:checked + .track .knob { left:15px; }
+            .criteria-switch input:focus-visible + .track { outline:2px solid #0969da; outline-offset:2px; }
+        </style>
 
         <button id="capture-btn" class="btn btn-primary capture-btn"
                 onclick="triggerCapture()">&#128203; Capture Note</button>
@@ -420,7 +448,6 @@
         <!-- Claude fill review (app only; never pasted) -->
         <div id="fill-review" style="display:none; margin:6px 0; padding:6px 8px; border:1px solid #e1e4e8; border-radius:6px; background:#fff; font-size:11px;">
             <div id="fill-summary" style="font-weight:600; margin-bottom:4px;"></div>
-            <div id="fill-flags"></div>
             <div id="fill-texts" style="white-space:pre-wrap; font-family:Consolas,Menlo,monospace; max-height:180px; overflow-y:auto;"></div>
         </div>
         <style>
@@ -428,7 +455,6 @@
             #fill-texts mark.inferred { background:#fff5b1; }
             #fill-texts mark.derived { background:#dbedff; }
             #fill-texts mark.unfilled { background:#ffdce0; }
-            #fill-flags .flag { color:#b08800; margin-bottom:2px; }
         </style>
 
         <div class="paste-legend" id="paste-legend">

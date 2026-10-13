@@ -372,7 +372,7 @@ do {
     func trimNL(_ s: String) -> String { s.hasSuffix("\n") ? String(s.dropLast()) : s }
     check(r?.ok == true && r?.texts?[0] == trimNL(cf("expected_exam.txt")) && r?.texts?[1] == trimNL(cf("expected_ap.txt")),
           "recorded response -> same assembled text as Windows (shared expected files)")
-    check(r?.counts == FillCounts(blanks: 25, filled: 19, inferred: 5, derived: 1, rejected: 2) && r?.summary == "Filled 19 of 25 blanks (5 inferred, 1 derived); 1 criteria warning.",
+    check(r?.counts == FillCounts(blanks: 25, filled: 19, inferred: 5, derived: 1, rejected: 2) && r?.summary == "Filled 19 of 25 blanks (5 inferred, 1 derived); 1 criteria gap.",
           "counts and summary match")
     check(core.fillApply(note: note, templates: templates, response: "{\"content\": []}")?.ok == false, "malformed reply -> nothing filled")
     let v1 = core.fillValidateCount(line: "Pain ___/10.", value: ["blank_id": 1, "value": "9", "kind": "explicit", "source_quote": "rated 9/10", "source_section": "HPI"], note: note)
@@ -542,6 +542,37 @@ do {
     let rows = core.pickerExplain(ap: "1. Lumbar radiculopathy\n- Consider TFESI if no improvement\n\nFollow-up:\n- Schedule TFESI next visit")
     check(rows.count == 4 && rows[1].reason.contains("hedged by") && !rows[3].evaluated && rows[3].reason.contains("Follow-up"), "explain rows")
     check(src("FailureHUD.swift").contains("Button(\"Why no picker?\", action: why)") && !src("FailureHUD.swift").contains("logger"), "Why no picker? is on screen only")
+}
+
+// ── 2026-10-12 (d6545f8 feedback): zero only with an explicit none; short criteria-gap lines ──
+do {
+    let zn = ["hpi": "No bowel or bladder changes. Denies numbness or tingling. No prior SI joint injections. Denies prior ESI.", "exam": "", "ap": ""]
+    let line = "Number of prior SI joint injections: ___."
+    func z(_ l: String, _ v: String, _ q: String) -> (accepted: Int, reasons: [String]) {
+        core.fillValidateCount(line: l, value: ["blank_id": 1, "value": v, "kind": "inferred", "source_quote": q, "source_section": "HPI"], note: zn)
+    }
+    check(z(line, "0", "No bowel or bladder changes").reasons == ["zero not stated in quote"], "0 from an unrelated negation -> rejected (absence is not zero)")
+    check(z(line, "0", "Denies numbness or tingling").reasons == ["zero not stated in quote"], "0 from an unrelated denial -> rejected")
+    check(z(line, "N/A", "No bowel or bladder changes").reasons == ["zero not stated in quote"], "N/A without an explicit none -> rejected")
+    check(z(line, "0", "No prior SI joint injections").accepted == 1, "0 with an explicit none of that thing -> accepted")
+    check(z("Prior ESI in past 12 months: ___.", "0", "Denies prior ESI").accepted == 1, "denies prior ESI -> 0 accepted")
+    let tabV = src("HeidiTabView.swift")
+    check(tabV.contains("@State private var expanded = false") && tabV.range(of: "CriteriaGapsView(flags: flags)")!.lowerBound < tabV.range(of: "SlotCard(label: \"HPI\"")!.lowerBound,
+          "criteria gaps: collapsed by default, above the slots")
+    check(core.fillRequestBody(note: zn, templates: [FillTemplate(slot: "ap", text: line)], model: core.fillModel)
+            .flatMap { String(data: $0, encoding: .utf8) }?.contains("ONE short line (under 80 characters)") == true, "prompt asks for one short line per gap")
+}
+
+// "Include procedure criteria" switch (2026-10-12)
+check(core.criteriaSwitchAfterCapture(current: false, resetOnCapture: true) == true
+      && core.criteriaSwitchAfterCapture(current: false, resetOnCapture: false) == false
+      && core.criteriaSwitchAfterCapture(current: true, resetOnCapture: false) == true, "criteria switch: reset on capture vs keep (same rule as Windows)")
+do {
+    let sm = src("HeidiSlotManager.swift")
+    check(body(sm, from: "var composedAP: String?").contains("if libraryDots.isEmpty || !includeCriteria { return ap }")
+          && !body(sm, from: "var composedExam: String?").contains("includeCriteria"), "switch off: A&P paste is the captured A&P; exam unaffected")
+    check(body(sm, from: "func beginCapture()").contains("resetCriteriaForNewCapture()") && body(sm, from: "func adoptFreed(").contains("resetCriteriaForNewCapture()"),
+          "switch reset on every new capture (Heidi and Freed) per the setting")
 }
 
 print("\(passed) passed, \(failed) failed")
