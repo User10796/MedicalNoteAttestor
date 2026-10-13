@@ -444,20 +444,31 @@ window.electronAPI.onSlotEmpty((slotName) => {
 });
 
 // Claude fill review: highlights, source quotes on hover, criteria warnings. Shown in the app only.
+// "⚠ N criteria gaps ▸" above the slots, collapsed by default; one short line per gap.
+function showCriteriaGaps(flags) {
+    const box = document.getElementById('criteria-gaps');
+    if (!box) return;
+    const list = document.getElementById('criteria-gaps-list');
+    list.textContent = '';
+    box.open = false;
+    const gaps = (flags || []).map(f => f.message).filter(Boolean);
+    if (!gaps.length) { box.style.display = 'none'; return; }
+    document.getElementById('criteria-gaps-summary').textContent =
+        '\u26A0 ' + gaps.length + ' criteria gap' + (gaps.length === 1 ? '' : 's');
+    for (const g of gaps) { const li = document.createElement('li'); li.textContent = g; list.append(li); }
+    box.style.display = '';
+}
+
 window.electronAPI.onLibraryFillReview((review) => {
     const box = document.getElementById('fill-review');
     if (!box) return;
-    const summary = document.getElementById('fill-summary'), flags = document.getElementById('fill-flags'), texts = document.getElementById('fill-texts');
-    flags.textContent = ''; texts.textContent = '';
+    const summary = document.getElementById('fill-summary'), texts = document.getElementById('fill-texts');
+    texts.textContent = '';
+    showCriteriaGaps(review && !review.notice ? review.flags : []);
     if (!review) { box.style.display = 'none'; return; }
     box.style.display = 'block';
     if (review.notice) { summary.textContent = '\u26A0\uFE0F ' + review.notice; return; }
     summary.textContent = review.summary;
-    (review.flags || []).forEach(f => {
-        const d = document.createElement('div'); d.className = 'flag';
-        d.textContent = '\u26A0\uFE0F ' + f.message + (f.line ? ' \u2014 ' + f.line : '');
-        flags.append(d);
-    });
     (review.templates || []).forEach((t, i) => {
         if (i) texts.append(document.createElement('hr'));
         let pos = 0;
@@ -496,3 +507,10 @@ collapseBtn.addEventListener('click', () => {
         window.electronAPI.setWindowCollapsed(false);
     }
 });
+
+// "Include procedure criteria" switch (A&P only). Read when the A&P paste key is pressed.
+async function setCriteriaSwitch(on) { await window.electronAPI.criteriaSwitchSet(!!on); }
+function showCriteriaSwitch(s) { const el = document.getElementById('criteria-switch'); if (el && s) el.checked = !!s.on; }
+window.electronAPI.onCriteriaSwitch(showCriteriaSwitch);
+window.electronAPI.criteriaSwitchGet().then(showCriteriaSwitch);
+

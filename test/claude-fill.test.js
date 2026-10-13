@@ -33,7 +33,7 @@ test('recorded response: clinician-style fills accepted; fabrications rejected; 
     assert.match(r.texts[1], /imaging: MRI \(MRI\/CT date 2026-08-14\)/, '"MR" and 08/14/2026 accepted');
     assert.match(r.texts[1], /past 12 months: 0\./, '"No prior epidural steroid injections" -> 0');
     assert.match(r.texts[1], /prior ESI on ___ gave ___% relief/, 'unsupported date and percentage left blank');
-    assert.strictEqual(r.summary, 'Filled 19 of 25 blanks (5 inferred, 1 derived); 1 criteria warning.');
+    assert.strictEqual(r.summary, 'Filled 19 of 25 blanks (5 inferred, 1 derived); 1 criteria gap.');
     const derived = r.marks[1].find(m => m.kind === 'derived');
     assert.strictEqual(derived.conversion, '2 months → 8 weeks');
 });

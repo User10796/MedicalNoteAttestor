@@ -240,7 +240,8 @@ DoPasteAp() {
     global slotAP, lastCaptureTs, captureFailed
     if PasteHeld()
         return
-    composed := MnaReadComposed(GetRuntimeDir() "\mna-ap.txt", lastCaptureTs)
+    ; "Include procedure criteria" switch, read now: off -> only the captured A&P.
+    composed := MnaCriteriaOn(GetRuntimeDir() "\mna-criteria.txt") ? MnaReadComposed(GetRuntimeDir() "\mna-ap.txt", lastCaptureTs) : ""
     PasteOrBeep(MnaContentToPaste(captureFailed, composed, slotAP))
 }
 

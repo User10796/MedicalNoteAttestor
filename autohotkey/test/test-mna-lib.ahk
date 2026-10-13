@@ -118,6 +118,16 @@ Check(!MnaPasteBlocked("", false, "", 0), "no capture: nothing to hold")
 Check(MnaReadHold(dir "\missing.txt") = "", "missing hold file")
 Check(MnaStillProcessingText() = "Still processing " Chr(0x2014) " wait for the picker/fill to finish.", "still-processing text")
 
+; "Include procedure criteria" switch (2026-10-12)
+Check(MnaCriteriaOn(dir "\no-such-file.txt"), "criteria switch: missing file -> On")
+FileAppend("MNA-CRIT1 off", dir "\mna-criteria.txt", "UTF-8-RAW")
+Check(!MnaCriteriaOn(dir "\mna-criteria.txt"), "criteria switch: off")
+FileDelete(dir "\mna-criteria.txt")
+FileAppend("MNA-CRIT1 on", dir "\mna-criteria.txt", "UTF-8-RAW")
+Check(MnaCriteriaOn(dir "\mna-criteria.txt"), "criteria switch: on")
+Check(MnaContentToPaste(false, MnaCriteriaOn(dir "\mna-criteria.txt") ? "A&P + criteria" : "", "A&P") = "A&P + criteria", "on: composed A&P")
+Check(MnaContentToPaste(false, false ? "A&P + criteria" : "", "A&P") = "A&P", "off: captured A&P only")
+
 MnaLog(dir, "test log line")
 Check(InStr(FileRead(dir "\mna-ahk.log", "UTF-8"), "test log line") > 0, "log written")
 

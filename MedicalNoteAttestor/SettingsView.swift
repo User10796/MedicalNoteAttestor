@@ -285,6 +285,7 @@ struct HotkeySettingsSection: View {
 
 struct LibrarySettingsTab: View {
     @ObservedObject var library = LibraryStore.shared
+    @AppStorage(HeidiSlotManager.criteriaResetKey) private var criteriaReset = true
     @State private var token = ""
     @State private var busy = false
 
@@ -296,6 +297,9 @@ struct LibrarySettingsTab: View {
         Form {
             Section("Insertion") {
                 Toggle("Insert library exam text (F10) and dot-phrases (F11) after capture", isOn: $library.enabled)
+                Toggle("Reset criteria switch to On for each new capture", isOn: $criteriaReset)
+                Text("The \u{201C}Include procedure criteria\u{201D} switch on the main screen decides whether the A&P paste includes the library criteria text. When this is off, the switch keeps its last position across captures and restarts.")
+                    .font(.caption).foregroundColor(.secondary)
                 Toggle("Fill library blanks with Claude", isOn: $library.claudeFill)
                 Text(library.claudeFill && !SettingsManager.shared.hasClaudeAPIKey
                      ? "On, but no Claude API key is saved (Settings \u{2192} Claude API), so nothing is sent and blanks stay as-is."
