@@ -138,7 +138,7 @@ test('main.js wires failed captures: clipboard cleared before copy, failure clea
     const src = fs.readFileSync(require('path').join(__dirname, '..', 'main.js'), 'utf8');
     assert.match(src, /clipboard\.clear\(\);\s*\n\s*\/\/ Step 1/, 'stale clipboard can never be captured');
     assert.match(src, /captureFailed = isCaptureFailure\(\{ failed: data\.failed/, 'AHK failed flag honored');
-    assert.match(src, /if \(captureFailed\) \{ slots\.hpi = null; slots\.ap = null; \}/);
+    assert.match(src, /if \(captureFailed\) \{ slots\.hpi = null; slots\.ap = null; processing\.ready\(ts\); \}/);
     assert.match(src, /slotContent\('hpi', pasteState\(\)\)/);
     assert.match(src, /function effectiveExam\(\) \{ return slotContent\('exam', pasteState\(\)\)/);
     assert.match(src, /function effectiveAp\(\) \{ return slotContent\('ap', pasteState\(\)\)/);

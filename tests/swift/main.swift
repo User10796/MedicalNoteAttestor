@@ -291,7 +291,7 @@ check(body(appSrc2, from: "func performCapture()").contains("await libraryAfterC
       && !body(appSrc2, from: "func performCapture()").contains("runLibraryFlow"), "Heidi auto-open gated by the same rule")
 let afterCap = body(appSrc2, from: "func libraryAfterCapture(captureId: UUID)")
 check(afterCap.contains("MNACore.shared.pickerOnCapture(ap: ap)") && afterCap.contains("if decision.open {")
-      && afterCap.contains("await runLibraryFlow(captureId: captureId)") && afterCap.contains("FailureHUD.show(notice, style: .info)"),
+      && afterCap.contains("await runLibraryFlow(captureId: captureId)") && afterCap.contains("NoPlannedNotice.show(notice)"),
       "after any capture: planned -> picker, else a brief non-blocking notice")
 check(src("HeidiTabView.swift").contains("Button(\"Open payer picker\")"), "main window has an Open payer picker button")
 // Optional hotkey: unbound by default, rebindable, duplicate rejected, browser key warned, clearable.
@@ -397,11 +397,12 @@ do {
     let flow = body(src("MedicalNoteAttestorApp.swift"), from: "func runLibraryFlow(")
     let fillFn = body(src("MedicalNoteAttestorApp.swift"), from: "func runClaudeFill(")
     check(flow.contains("if library.claudeFill {") && flow.contains("await runClaudeFill(note: note, templates: templates)")
-          && fillFn.contains("model: ClaudeAPIClient.model"),
-          "Mac fill gated by the setting (off by default) and the user's key; model = ClaudeAPIClient.model")
+          && fillFn.contains("model: core.fillModel, stream: true"),
+          "Mac fill gated by the setting (off by default) and the user's key; model = shared core.fillModel, streaming")
     check(src("LibraryStore.swift").contains("claudeFill = d.object(forKey: \"libraryClaudeFill\") as? Bool ?? false"), "setting off by default")
-    check(src("ClaudeAPIClient.swift").contains("static let fillTimeout: TimeInterval = 60")
-          && src("ClaudeAPIClient.swift").contains("config.timeoutIntervalForResource = timeout"), "60 s timeout for the whole request")
+    check(src("ClaudeAPIClient.swift").contains("static let fillIdleTimeout: TimeInterval = 30")
+          && src("ClaudeAPIClient.swift").contains("static let fillTotalTimeout: TimeInterval = 120")
+          && src("ClaudeAPIClient.swift").contains("config.timeoutIntervalForResource = totalTimeout"), "30 s idle / 120 s total timeouts")
 }
 
 // ── Freed F10 default-exam fallback (2026-10-12), same order as Windows ──
@@ -420,7 +421,7 @@ do {
     // Shared notice text (same as Windows).
     check(core.fillNotice("no-key") == "Claude fill: no API key saved \u{2014} blanks left as-is. Add your key in Settings.", "notice: no key")
     check(core.fillNotice("key-unreadable").hasPrefix("Claude fill: your saved API key couldn\u{2019}t be read"), "notice: key unreadable")
-    check(core.fillNotice("timeout") == "Claude fill timed out after 60 s \u{2014} blanks left as-is.", "notice: timeout")
+    check(core.fillNotice("timeout") == "Claude fill timed out (no reply from Claude) \u{2014} blanks left as-is.", "notice: timeout")
     check(core.fillNotice("http", 401) == "Claude fill failed (HTTP 401: check your API key) \u{2014} blanks left as-is.", "notice: HTTP 401")
     check(core.fillNotice("network") == "Claude fill failed (network error) \u{2014} blanks left as-is.", "notice: network")
     check(core.fillNotice("malformed") == "Claude fill failed (unexpected reply) \u{2014} blanks left as-is.", "notice: malformed reply")
@@ -437,9 +438,12 @@ do {
     check(flowFn.contains("if library.claudeFill {") && !flowFn.contains("ClaudeKey.current() != nil"), "fill not skipped silently when the key is missing")
     let fillFn = body(app, from: "func runClaudeFill(")
     for (needle, name) in [("case .missing: return failed(\"no-key\")", "no key"), ("case .unreadable(let status): return failed(\"key-unreadable\"", "key unreadable"),
-                           ("catch let f as ClaudeFillFailure { return failed(f.reason, f.detail) }", "API error / timeout"),
-                           ("return failed(\"malformed\")", "malformed reply"), ("FailureHUD.show(text, seconds: 6)", "visible HUD"),
-                           ("FailureHUD.show(summary, style: .info)", "summary shown"), ("FailureHUD.show(ClaudeFillProgress.started", "progress shown")] {
+                           ("if case .http(let code, let errBody) = f { return failed(\"http\", code, notice: core.fillNotice(\"http\", code, apiErrorBody: errBody)) }", "API error with type + message"),
+                           ("return failed(f.reason, f.detail)", "timeout / network / cancelled"),
+                           ("return failed(\"malformed\")", "malformed reply"), ("progress.finish(text, stage: reason == \"cancelled\" ? \"cancelled\" : \"error\")", "visible panel"),
+                           ("progress.finish(core.fillProgress(\"done\"", "done: filled X of N"), ("progress.start(text: core.fillProgress(\"sending\"), total: total) { task.cancel() }", "progress + Cancel"),
+                           ("progress.update(stage: \"filling\", text: core.fillProgress(\"filling\", st.n, total)", "n of N as values arrive"),
+                           ("progress.update(stage: \"checking\"", "checking values")] {
         check(fillFn.contains(needle), "fill never silent: \(name)")
     }
     check(app.contains("exams.map { FillTemplate(slot: \"exam\", text: $0) } + dots.map { FillTemplate(slot: \"ap\", text: $0) }"),
@@ -477,6 +481,67 @@ do {
           && app.contains(".captureFreed: { Task { @MainActor in await AppDelegate.shared?.performFreedCapture() } }"),
           "app dispatches by action (Heidi parser vs Freed parser), never by key name")
     UserDefaults().removePersistentDomain(forName: suite5)
+}
+
+// ── 2026-10-12 (fd53909 fixes): HTTP 400 cause, streaming progress, hold until processed, Why no picker? ──
+do {
+    // The 400: a key not scoped to a workspace. Notice shows the API's type + message and how to fix it.
+    let msg = "This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use."
+    let errBody = "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"\(msg)\"}}"
+    check(core.fillNotice("http", 400, apiErrorBody: errBody) == "Claude fill failed (400 invalid_request_error: \(msg)) \u{2014} blanks left as-is. Add your workspace ID in Settings \u{2192} Claude API, or use a key scoped to a workspace.",
+          "400 notice: API error type and message + workspace hint (same text as Windows)")
+    check(core.fillStreamErrorNotice(type: "overloaded_error", message: "Overloaded") == "Claude fill failed (overloaded_error: Overloaded) \u{2014} blanks left as-is.", "stream error notice")
+    check(core.normalizeWorkspaceId(" wrkspc_01ABC ") == "wrkspc_01ABC" && core.normalizeWorkspaceId("bad id;") == "", "workspace ID normalized")
+    let api = src("ClaudeAPIClient.swift")
+    check(api.components(separatedBy: "ClaudeAPIClient.addWorkspaceHeader(&request)").count - 1 == 3, "workspace header on every Claude call (fill, Attestor, action items)")
+    check(api.contains("static let model = \"claude-sonnet-4-6\"") && core.fillModel == "claude-sonnet-4-6", "one model ID on both platforms")
+    check(core.fillProgress("sending") == "Sending to Claude" && core.fillProgress("filling", 3, 25) == "Claude is filling blanks (3 of 25)"
+          && core.fillProgress("checking") == "Checking values" && core.fillProgress("done", 19, 25) == "Done: filled 19 of 25", "progress stage text")
+    // Streaming through JavaScriptCore: same counts and same filled text as the recorded (non-stream) reply.
+    let cfDir = root.appendingPathComponent("test/fixtures/claude-fill")
+    func cf(_ f: String) -> String { (try! String(contentsOf: cfDir.appendingPathComponent(f), encoding: .utf8)).replacingOccurrences(of: "\r\n", with: "\n") }
+    let rec = try! JSONSerialization.jsonObject(with: Data(cf("recorded_response_tfesi.json").utf8)) as! [String: Any]
+    let tu = (rec["content"] as! [[String: Any]]).first { $0["type"] as? String == "tool_use" }!
+    let inputJSON = String(data: try! JSONSerialization.data(withJSONObject: tu["input"]!), encoding: .utf8)!
+    func ev(_ o: [String: Any]) -> String { "event: x\ndata: " + String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)! + "\n\n" }
+    var sse = ev(["type": "content_block_start", "index": 0, "content_block": ["type": "tool_use", "id": "t", "name": tu["name"]!, "input": [String: Any]()]])
+    var i = inputJSON.startIndex
+    while i < inputJSON.endIndex { let j = inputJSON.index(i, offsetBy: 40, limitedBy: inputJSON.endIndex) ?? inputJSON.endIndex
+        sse += ev(["type": "content_block_delta", "index": 0, "delta": ["type": "input_json_delta", "partial_json": String(inputJSON[i..<j])]]); i = j }
+    sse += ev(["type": "message_delta", "delta": ["stop_reason": "tool_use"]]) + ev(["type": "message_stop"])
+    core.fillStreamBegin()
+    var counts: [Int] = [], done = false
+    for line in sse.components(separatedBy: "\n") { if let st = core.fillStreamFeed(line + "\n") { counts.append(st.n); done = st.done } }
+    check(counts.contains { $0 > 0 && $0 < 25 } && counts.last == 25 && done, "stream: n of N updates as values arrive, then done")
+    let noteSlots = okSlots(FreedCapture().process(raw: cf("freed_tfesi_note.txt")))!
+    let note = ["hpi": noteSlots.hpi, "exam": noteSlots.exam, "ap": noteSlots.ap]
+    let lib = json("test/fixtures/library.fixture.json") as! [String: Any]
+    let tf = (lib["entries"] as! [[String: Any]]).first { $0["key"] as? String == "medicare_ab_ga/lumbar_tfesi" }!
+    let templates = [FillTemplate(slot: "exam", text: (tf["exam_text"] as! [String: String])["left"]!),
+                     FillTemplate(slot: "ap", text: tf["documentation_dotphrase"] as! String)]
+    let streamed = core.fillStreamMessage().flatMap { core.fillApply(note: note, templates: templates, response: $0) }
+    check(streamed?.counts == FillCounts(blanks: 25, filled: 19, inferred: 5, derived: 1, rejected: 2), "streamed reply -> same result as the recorded reply")
+    check(core.fillBlankCount(templates: templates) == 25, "N = blanks in the inserted text")
+    if let b = core.fillRequestBody(note: note, templates: templates, model: core.fillModel, stream: true),
+       let o = try? JSONSerialization.jsonObject(with: b) as? [String: Any] { check(o["stream"] as? Bool == true, "request asks for a stream") }
+    else { check(false, "stream body builds") }
+    // Hold until processed.
+    check(core.stillProcessing == "Still processing \u{2014} wait for the picker/fill to finish.", "still-processing text (same as Windows/AHK)")
+    let sm = src("HeidiSlotManager.swift"), appS = src("MedicalNoteAttestorApp.swift")
+    check(body(sm, from: "func writeToClipboard(slot: Int)").contains("if isProcessing {\n            FailureHUD.show(MNACore.shared.stillProcessing, style: .info)\n            return"),
+          "paste keys paste nothing while processing and say so")
+    check(body(sm, from: "func beginCapture()").contains("processingCaptureId = id") && body(sm, from: "func adoptFreed(").contains("processingCaptureId = id"),
+          "every new capture starts held (Heidi and Freed)")
+    check(sm.contains("func publish(_ id: UUID) { if processingCaptureId == id { processingCaptureId = nil } }"), "only the current capture's hold is released")
+    let lac = body(appS, from: "func libraryAfterCapture(captureId: UUID)")
+    check(lac.contains("defer { slotManager.publish(captureId) }") && lac.contains("await runLibraryFlow(captureId: captureId)"),
+          "planned: picker -> fill -> publish together; every exit publishes (skip, failure, cancel)")
+    check(lac.contains("slotManager.publish(captureId)\n            NoPlannedNotice.show(notice)"), "not planned: publish at once, notice with Why no picker?")
+    check(body(appS, from: "func openPickerManually()").contains("slotManager.holdForProcessing(captureId)"), "manual open holds until published")
+    // Why no picker?
+    let rows = core.pickerExplain(ap: "1. Lumbar radiculopathy\n- Consider TFESI if no improvement\n\nFollow-up:\n- Schedule TFESI next visit")
+    check(rows.count == 4 && rows[1].reason.contains("hedged by") && !rows[3].evaluated && rows[3].reason.contains("Follow-up"), "explain rows")
+    check(src("FailureHUD.swift").contains("Button(\"Why no picker?\", action: why)") && !src("FailureHUD.swift").contains("logger"), "Why no picker? is on screen only")
 }
 
 print("\(passed) passed, \(failed) failed")

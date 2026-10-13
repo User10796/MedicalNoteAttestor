@@ -378,10 +378,42 @@ window.electronAPI.onCaptureResult((data) => {
 // Notices: Freed capture ("Already captured", "Clipboard doesn't look like a Freed note..."), the picker
 // ("No planned procedure detected...") and Claude fill (progress, summary, or why it couldn't run).
 // They never contain note text.
-const INFO_NOTICE = /^(Already captured|No planned procedure|Claude is filling|Filled \d|Claude fill: no blanks)/;
+const INFO_NOTICE = /^(Already captured|No planned procedure|Claude is filling|Filled \d|Claude fill: no blanks|Claude fill cancelled|Still processing)/;
 window.electronAPI.onSourceNotice((message) => {
     const info = INFO_NOTICE.test(message);
-    setHeidiStatus((info ? '\u2139\uFE0F ' : '\u26A0\uFE0F ') + message, info ? '' : 'error');
+    const noPicker = /^No planned procedure detected/.test(message);
+    setHeidiStatus((info ? '\u2139\uFE0F ' : '\u26A0\uFE0F ') + message, info ? '' : 'error', noPicker);
+    document.getElementById('why-no-picker').style.display = noPicker ? '' : 'none';
+    if (!noPicker) document.getElementById('picker-explain').style.display = 'none';
+});
+
+// "Why no picker?": every A&P line, whether it was evaluated and why it did or didn't qualify.
+// Rendered with textContent only; never logged or sent anywhere.
+async function showPickerExplain() {
+    const rows = await window.electronAPI.pickerExplain();
+    const box = document.getElementById('picker-explain-rows');
+    box.textContent = '';
+    if (!rows.length) box.textContent = 'No A&P text in the current capture.';
+    for (const r of rows) {
+        const div = document.createElement('div');
+        div.style.cssText = 'margin:3px 0; padding-left:6px; border-left:3px solid ' +
+            (r.planned ? '#2da44e' : r.evaluated ? '#d29922' : '#d0d7de');
+        const line = document.createElement('div');
+        line.style.fontFamily = 'monospace';
+        line.textContent = r.line;
+        const why = document.createElement('div');
+        why.style.color = '#57606a';
+        why.textContent = (r.planned ? '\u2713 counts: ' : r.evaluated ? '\u2717 ' : 'skipped: ') + r.reason;
+        div.append(line, why);
+        box.appendChild(div);
+    }
+    document.getElementById('picker-explain').style.display = '';
+}
+
+// Slots are held while the picker / Claude fill run (pastes do nothing until they're published).
+window.electronAPI.onProcessing((holding) => {
+    if (holding) setHeidiStatus('\u23F3 Processing \u2014 pastes wait for the picker/fill to finish', '', true);
+    else if (/Processing \u2014 pastes wait/.test(document.getElementById('heidi-status').textContent)) setHeidiStatus('', '');
 });
 
 window.electronAPI.onBulletsReady((data) => {

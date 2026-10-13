@@ -292,6 +292,14 @@
                     There is no built-in key: without your key, Claude features (Attestor Select, action items) are unavailable.
                 </div>
             </div>
+            <div class="form-group">
+                <label for="claude-workspace-id">Workspace ID (only if your key needs it)</label>
+                <input type="text" id="claude-workspace-id" placeholder="wrkspc_..." spellcheck="false">
+                <div class="help-text">
+                    If Claude features fail with &ldquo;This API key is not scoped to a workspace&rdquo;, paste the workspace ID
+                    from console.anthropic.com (Settings &rarr; Workspaces), or create a key inside a workspace. Not a secret.
+                </div>
+            </div>
         </div>
 
         <div class="section">
@@ -443,6 +451,7 @@ Plan:
 
             document.getElementById('exam-dot-phrase').value = settings.examDotPhrase  || '';
             document.getElementById('heidi-action-items').checked = !!settings.heidiActionItems;
+            document.getElementById('claude-workspace-id').value = settings.claudeWorkspaceId || '';
 
             // Show API key status (don't populate the field for security)
             if (settings.hasClaudeApiKey) {
@@ -486,6 +495,7 @@ Plan:
                 apHotkey: apHotkey.value,
                 examDotPhrase:  document.getElementById('exam-dot-phrase').value,
                 heidiActionItems: document.getElementById('heidi-action-items').checked,
+                claudeWorkspaceId: document.getElementById('claude-workspace-id').value,
                 claudeApiKey: newApiKey || undefined,
                 clearClaudeApiKey: clearKeyRequested,
                 customClaudeInstructions: claudeInstructions.value,

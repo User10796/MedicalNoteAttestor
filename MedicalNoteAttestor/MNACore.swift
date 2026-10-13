@@ -106,9 +106,16 @@ final class MNACore {
               detect: function (ap) { return MNACore.detectProcedures(ap, __bundle); },
               freedPlanned: function (ap) { return MNACore.procedurePlanned(ap, __bundle); },
               pickerOnCapture: function (ap) { return MNACore.pickerOnCapture(ap, __bundle); },
+              pickerExplain: function (ap) { return MNACore.pickerExplain(ap, __bundle); },
+              stream: null,
+              streamBegin: function () { __S.stream = MNACore.fillStreamStart(); return true; },
+              streamFeed: function (text) { var st = MNACore.fillStreamFeed(__S.stream, text);
+                  return { n: st.n, done: st.done, error: st.error }; },
+              streamMessage: function () { var m = MNACore.fillStreamMessage(__S.stream); __S.stream = null;
+                  return m ? JSON.stringify(m) : null; },
               terms: function () { return MNACore.procedureTerms(__bundle); },
               linePlanned: function (line) { return MNACore.procedureLineIsPlanned(line, __bundle); },
-              fillBody: function (note, templates, model) { return MNACore.fillRequest(note, templates, model).body; },
+              fillBody: function (note, templates, model, opts) { return MNACore.fillRequest(note, templates, model, opts).body; },
               resolve: function (payer, items) { return MNACore.resolveSelections(__bundle, payer, items); },
               search: function (q, recents) { return MNACore.searchPayers(__bundle, q, recents); },
               procedures: function () { return ((__bundle && __bundle.registries && __bundle.registries.procedures) || [])
@@ -182,14 +189,41 @@ final class MNACore {
 
     // MARK: Claude fill (prompt, validation and assembly all live in the shared core)
 
-    func fillRequestBody(note: [String: String], templates: [FillTemplate], model: String) -> Data? {
+    func fillRequestBody(note: [String: String], templates: [FillTemplate], model: String, stream: Bool = false) -> Data? {
         guard let t = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(templates)) else { return nil }
-        return callJSON("__S.fillBody", [note, t, model])
+        return callJSON("__S.fillBody", [note, t, model, ["stream": stream]])
     }
-    /// Visible notice for a fill that can't run or failed (same text as Windows).
-    func fillNotice(_ reason: String, _ detail: Int? = nil) -> String {
-        call("MNACore.fillNotice", [reason, detail ?? NSNull()], as: String.self) ?? "Claude fill unavailable \u{2014} blanks left as-is."
+    /// Visible notice for a fill that can't run or failed (same text as Windows). `apiErrorBody` is the
+    /// API's error body (Anthropic's type and message; no patient data).
+    func fillNotice(_ reason: String, _ detail: Int? = nil, apiErrorBody: String? = nil) -> String {
+        let apiError: Any = apiErrorBody.flatMap { body in
+            callJSON("MNACore.fillApiError", [body]).flatMap { try? JSONSerialization.jsonObject(with: $0, options: [.fragmentsAllowed]) }
+        } ?? NSNull()
+        return call("MNACore.fillNotice", [reason, detail ?? NSNull(), apiError], as: String.self) ?? "Claude fill unavailable \u{2014} blanks left as-is."
     }
+    func fillStreamErrorNotice(type: String, message: String) -> String {
+        call("MNACore.fillNotice", ["stream-error", NSNull(), ["type": type, "message": message]], as: String.self) ?? "Claude fill failed \u{2014} blanks left as-is."
+    }
+    func fillProgress(_ stage: String, _ n: Int = 0, _ total: Int = 0) -> String {
+        call("MNACore.fillProgress", [stage, n, total], as: String.self) ?? ""
+    }
+    var fillModel: String { call("(function () { return MNACore.FILL_MODEL; })", [], as: String.self) ?? "claude-sonnet-4-6" }
+    var stillProcessing: String { call("(function () { return MNACore.STILL_PROCESSING; })", [], as: String.self) ?? "Still processing \u{2014} wait for the picker/fill to finish." }
+    func normalizeWorkspaceId(_ s: String) -> String { call("MNACore.normalizeWorkspaceId", [s], as: String.self) ?? "" }
+    func fillBlankCount(templates: [FillTemplate]) -> Int {
+        guard let t = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(templates)) else { return 0 }
+        return call("(function (t) { return MNACore.fillPlan(t).blanks.length; })", [t], as: Int.self) ?? 0
+    }
+    // Streaming reply: one fill at a time (state lives in the JS context).
+    struct StreamStatus: Decodable { let n: Int; let done: Bool; let error: StreamError? }
+    struct StreamError: Decodable { let type: String; let message: String }
+    func fillStreamBegin() { _ = callJSON("__S.streamBegin", []) }
+    func fillStreamFeed(_ text: String) -> StreamStatus? { call("__S.streamFeed", [text], as: StreamStatus.self) }
+    func fillStreamMessage() -> String? { call("__S.streamMessage", [], as: String?.self) ?? nil }
+    // "Why no picker?" rows (on screen only; never logged).
+    struct ExplainRow: Decodable, Identifiable { let line: String; let evaluated: Bool; let planned: Bool; let reason: String
+        var id: String { line + "\u{1F}" + reason } }
+    func pickerExplain(ap: String) -> [ExplainRow] { call("__S.pickerExplain", [ap], as: [ExplainRow].self) ?? [] }
     func fillApply(note: [String: String], templates: [FillTemplate], response: String) -> FillResult? {
         guard let t = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(templates)) else { return nil }
         return call("MNACore.fillApply", [note, t, response], as: FillResult.self)

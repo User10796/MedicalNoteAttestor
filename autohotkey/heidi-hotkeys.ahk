@@ -8,6 +8,7 @@ global slotHPI := ""
 global slotAP  := ""
 global examDotPhrase := ""
 global lastCaptureTs := ""          ; A_TickCount of the capture these slots belong to
+global lastCaptureAt := 0           ; A_TickCount when these slots were captured/adopted (hold fallback)
 global lastNoticeId := ""          ; last Electron notice shown (mna-notice.txt)
 global captureFailed := false       ; last F8 failed: F9/F10/F11 paste nothing until a good capture
 global activeSource := "heidi"      ; which scribe filled the slots: "heidi" (F8) or "freed" (F7)
@@ -76,6 +77,7 @@ DoCapture() {
     hpi := text = "" ? "" : ExtractHPI(text)
     ap  := text = "" ? "" : ExtractAP(text)
     lastCaptureTs := A_TickCount
+    lastCaptureAt := A_TickCount
     if MnaCaptureFailed(text, hpi, ap) {
         ; Clear everything so F9/F10/F11 can't paste the previous patient's text.
         captureFailed := true
@@ -120,8 +122,19 @@ PasteOrBeep(content) {
     PasteText(content)
 }
 
+; Slots are held while Electron runs the picker / Claude fill for this capture (mna-hold.txt).
+PasteHeld() {
+    global lastCaptureTs, captureFailed, lastCaptureAt
+    if !MnaPasteBlocked(lastCaptureTs, captureFailed, MnaReadHold(GetRuntimeDir() "\mna-hold.txt"), A_TickCount - lastCaptureAt)
+        return false
+    ShowNotice(MnaStillProcessingText())
+    return true
+}
+
 DoPasteHpi() {
     global slotHPI, captureFailed
+    if PasteHeld()
+        return
     PasteOrBeep(MnaContentToPaste(captureFailed, "", slotHPI))
 }
 
@@ -130,6 +143,8 @@ DoPasteHpi() {
 ; Freed with no exam (empty or N/A) and no library text: silent no-op (no paste, no beep).
 DoPasteExam() {
     global examDotPhrase, lastCaptureTs, captureFailed, activeSource, slotFreedExam
+    if PasteHeld()
+        return
     composed := MnaReadComposed(GetRuntimeDir() "\mna-exam.txt", lastCaptureTs)
     if (activeSource = "freed") {
         LoadConfig()   ; current default exam from Settings
@@ -192,6 +207,7 @@ CheckFreedResult() {
     slotFreedExam := r["exam"]
     activeSource := "freed"
     lastCaptureTs := ts
+    lastCaptureAt := A_TickCount
     captureFailed := false
     SoundBeep 880, 80
     Sleep 60
@@ -222,6 +238,8 @@ ShowNotice(msg) {
 ; Nothing after a failed capture.
 DoPasteAp() {
     global slotAP, lastCaptureTs, captureFailed
+    if PasteHeld()
+        return
     composed := MnaReadComposed(GetRuntimeDir() "\mna-ap.txt", lastCaptureTs)
     PasteOrBeep(MnaContentToPaste(captureFailed, composed, slotAP))
 }

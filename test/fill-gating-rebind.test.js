@@ -80,8 +80,8 @@ test('main.js: every insertion path reaches the same flow, which always has the 
     const src = read('main.js');
     assert.match(src, /fillBlanks: \(req\) => claudeFiller\.fill\(req\),/);
     assert.match(src, /function startLibraryFlow\(source, captureTs\) \{[\s\S]{0,400}captureFlow\.onCapture\(/);
-    assert.match(src, /if \(d\.open\) startLibraryFlow\(source, captureTs\);/, 'automatic (Heidi and Freed)');
-    assert.match(src, /startLibraryFlow\(currentSource, currentCaptureTs\);/, 'manual open, either source');
+    assert.match(src, /hold: processing, runFlow: \(\) => startLibraryFlow\(source, captureTs\),/, 'automatic (Heidi and Freed)');
+    assert.match(src, /startLibraryFlow\(currentSource, ts\)\.finally\(\(\) => processing\.ready\(ts\)\);/, 'manual open, either source');
     assert.match(src, /ipcMain\.handle\('open-picker-manually', \(\) => openPickerManually\(\)\);/, 'button');
     assert.match(src, /tryRegister\(hk\.openPicker, \(\) => \{ const r = openPickerManually\(\);/, 'picker hotkey');
     const manual = src.slice(src.indexOf('function openPickerManually()'), src.indexOf('ipcMain.handle(\'open-picker-manually\''));
@@ -116,8 +116,8 @@ test('AHK and Electron dispatch by action name; no source/parser/gating/fill dec
 // ── Windows notices reach the user outside the main window ──────────────────────────────────
 test('notices: main window + AHK tooltip file; AHK polls it and skips one left from before launch', () => {
     const main = read('main.js');
-    assert.match(main, /function showNotice\(text\) \{[\s\S]{0,300}webContents\.send\('source-notice', text\)[\s\S]{0,300}mna-notice\.txt/);
-    assert.match(main, /else if \(d\.notice\) showNotice\(d\.notice\);/);
+    assert.match(main, /function showNotice\(text, \{ tooltipSuffix = '' \} = \{\}\) \{[\s\S]{0,300}webContents\.send\('source-notice', text\)[\s\S]{0,300}mna-notice\.txt/);
+    assert.match(main, /notify: \(notice\) => showNotice\(notice, \{ tooltipSuffix: ' \(Why\? See the MNA window\.\)' \}\)/);
     const ahk = read('autohotkey/heidi-hotkeys.ahk');
     assert.match(ahk, /SetTimer\(CheckNoticeFile, 250\)/);
     assert.match(ahk, /ShowNotice\(n\["message"\]\)/);

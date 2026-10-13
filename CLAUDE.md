@@ -39,5 +39,14 @@
   notice. "Open payer picker" works for either source. Rules follow the capture SOURCE (hotkey action), never the
   key name: Sterling binds Freed capture to F8 on some machines.
 - Claude fill runs on every library insertion when the setting is on and never fails silently: no key, unreadable
-  key, HTTP error, network error, timeout (60 s) or a malformed reply each show a notice (`MNACore.fillNotice`).
-  Windows notices reach AHK through `mna-notice.txt` (`MNA-NOTICE1 <id>`, tooltip at the cursor); Mac uses FailureHUD.
+  key, HTTP error (with the API's error type + message), network error, timeout (30 s idle / 120 s total), a stream
+  error or a malformed reply each show a notice (`MNACore.fillNotice`). Streaming request; a progress window/HUD
+  shows Sending -> filling n of N -> Checking -> Done, elapsed time, and Cancel (publishes library text unfilled).
+  Model: `MNACore.FILL_MODEL` (claude-sonnet-4-6; Sonnet 5.5 / Opus 5.5 reject the forced tool_choice).
+  Keys not scoped to a workspace need `anthropic-workspace-id` (Settings > Claude API > Workspace ID; not a secret).
+  Live check: `ANTHROPIC_API_KEY="$(cat ~/.config/mna/claude_key)" node scripts/manual-claude-fill-live.js`
+  (key only for that command; never print it). Windows notices reach AHK through `mna-notice.txt`.
+- Hold until processed: every capture is held (paste keys paste nothing: "Still processing...") until published;
+  planned procedure -> picker -> fill -> publish all slots together; otherwise publish at once. Windows: Electron
+  writes `mna-hold.txt` (`MNA-HOLD1 <captureTs> hold|ready`), AHK checks it on every paste (3 s fallback only if
+  Electron never answers). "Why no picker?" (`MNACore.pickerExplain`) is on screen only, never logged.

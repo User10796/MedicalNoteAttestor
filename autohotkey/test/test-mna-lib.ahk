@@ -105,6 +105,19 @@ Check(IsObject(MnaParseNotice(Chr(0xFEFF) "MNA-NOTICE1 18-2`r`nClaude fill timed
 Check(MnaParseNotice("MNA-NOTICE1 19-3", "") = "", "truncated notice ignored")
 Check(MnaParseNotice("garbage`r`ntext", "") = "", "garbage ignored")
 
+; Hold until processed (2026-10-12)
+FileAppend("MNA-HOLD1 555 hold", dir "\mna-hold.txt", "UTF-8-RAW")
+h := MnaReadHold(dir "\mna-hold.txt")
+Check(IsObject(h) && h["ts"] = "555" && h["state"] = "hold", "hold file parsed")
+Check(MnaPasteBlocked("555", false, h, 60000), "held capture: paste blocked")
+Check(!MnaPasteBlocked("555", true, h, 60000), "failed capture: not blocked here (pastes nothing anyway)")
+Check(!MnaPasteBlocked("555", false, Map("ts", "555", "state", "ready"), 10), "ready: published")
+Check(MnaPasteBlocked("777", false, h, 500), "new capture, no verdict yet: blocked")
+Check(!MnaPasteBlocked("777", false, h, 3500), "no verdict after 3 s (Electron not answering): published")
+Check(!MnaPasteBlocked("", false, "", 0), "no capture: nothing to hold")
+Check(MnaReadHold(dir "\missing.txt") = "", "missing hold file")
+Check(MnaStillProcessingText() = "Still processing " Chr(0x2014) " wait for the picker/fill to finish.", "still-processing text")
+
 MnaLog(dir, "test log line")
 Check(InStr(FileRead(dir "\mna-ahk.log", "UTF-8"), "test log line") > 0, "log written")
 
